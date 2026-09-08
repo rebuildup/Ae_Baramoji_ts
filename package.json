@@ -1,6 +1,6 @@
 {
   "name": "ae-baramoji-ts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript source-of-truth for Ae_Baramoji. Builds ExtendScript .jsx files and syncs them to the distribution repository.",
   "private": true,
   "type": "module",
