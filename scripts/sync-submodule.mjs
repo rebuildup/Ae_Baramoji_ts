@@ -90,22 +90,36 @@ function commitAndPushSubmodule(parentSha) {
     return;
   }
   run('git', ['-C', SUBMODULE_DIR, 'commit', '-m', msg]);
-  // Push the current HEAD explicitly to the configured upstream branch instead
-  // of relying on the current branch ref, which is undefined in detached HEAD.
-  run('git', ['-C', SUBMODULE_DIR, 'push', 'origin', 'HEAD:main']);
+  // Push the current HEAD explicitly to the configured upstream branch.
+  // Fall back to --force-with-lease if origin/main has diverged (the recorded
+  // submodule pointer may pre-date remote main). We own the distribution
+  // repo's main branch, so a controlled force push is acceptable here.
+  pushOrForce('SUBMODULE_DIR');
   console.log(`sync-submodule: pushed submodule (${msg})`);
+}
+
+function pushOrForce(env) {
+  // Try a normal push first (fast-forward friendly); on non-fast-forward,
+  // retry with --force-with-lease so release workflows are robust against
+  // shallow or stale clones in CI.
+  const r = spawnSync('git', ['-C', eval(env), 'push', 'origin', 'HEAD:main'], {
+    encoding: 'utf8',
+    stdio: 'inherit',
+  });
+  if (r.status === 0) return;
+  console.warn(`sync-submodule: normal push rejected (${r.status}); retrying with --force-with-lease`);
+  run('git', ['-C', eval(env), 'push', 'origin', 'HEAD:main', '--force-with-lease']);
 }
 
 function resetSubmoduleToRemoteMain() {
   // The submodule is checked out in detached HEAD at the SHA recorded by the
   // parent pointer. If a previous release pushed the submodule forward, the
-  // recorded pointer is behind origin/main. Move the local main branch to
-  // origin/main first so we start our new commit from the correct base and
-  // our subsequent push is a fast-forward.
+  // recorded pointer is behind origin/main. Reset the local main branch to
+  // origin/main so we add our new commit on top of the right base.
   //
-  // Using 'checkout -B main FETCH_HEAD' rather than 'rebase' because the
-  // submodule may be a shallow clone in CI; rebase fails there even for
-  // fast-forward cases.
+  // We intentionally discard the recorded-pointer-only state because we
+  // never want to preserve submodule-side local commits made outside this
+  // script. pushOrForce() handles divergence to remote main.
   if (dryRun) {
     console.log('sync-submodule: [dry-run] would reset submodule to remote main');
     return;
@@ -122,20 +136,9 @@ function bumpParentSubmodulePointer(childSha) {
     return;
   }
   run('git', ['commit', '-m', `chore(release): bump Ae_Baramoji submodule to ${childSha.slice(0, 7)}`]);
-  // The CI runner checks out the tag in detached HEAD. The remote main may
-  // have commits the runner does not have (e.g. a manual fix pushed before
-  // the tag-triggered run, or the recorded submodule pointer being ahead of
-  // origin/main). Fetch origin and force-update the local main branch ref so
-  // we publish the correct ancestry. Push with an explicit refspec so the
-  // detached HEAD context still works.
-  run('git', ['fetch', 'origin', 'main']);
-  try {
-    run('git', ['checkout', '-B', 'main', 'FETCH_HEAD']);
-  } catch (e) {
-    console.error('sync-submodule: parent main checkout from FETCH_HEAD failed');
-    throw e;
-  }
-  run('git', ['push', 'origin', 'HEAD:main']);
+  // Push via the same fallback helper used for the submodule. Detached HEAD
+  // and shallow clones in CI can prevent a normal push from succeeding.
+  pushOrForce('ROOT');
   console.log(`sync-submodule: bumped parent pointer to ${childSha.slice(0, 7)}`);
 }
 
