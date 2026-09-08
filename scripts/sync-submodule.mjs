@@ -90,7 +90,10 @@ function commitAndPushSubmodule(parentSha) {
     return;
   }
   run('git', ['-C', SUBMODULE_DIR, 'commit', '-m', msg]);
-  run('git', ['-C', SUBMODULE_DIR, 'push']);
+  // Submodule is checked out in detached HEAD inside CI (and may be locally).
+  // Push the current HEAD explicitly to the configured upstream branch instead
+  // of relying on the current branch ref, which is undefined here.
+  run('git', ['-C', SUBMODULE_DIR, 'push', 'origin', 'HEAD:main']);
   console.log(`sync-submodule: pushed submodule (${msg})`);
 }
 
@@ -101,7 +104,18 @@ function bumpParentSubmodulePointer(childSha) {
     return;
   }
   run('git', ['commit', '-m', `chore(release): bump Ae_Baramoji submodule to ${childSha.slice(0, 7)}`]);
-  run('git', ['push', 'origin', 'HEAD']);
+  // The CI runner checks out the tag in detached HEAD. The remote main may
+  // have commits the runner does not (e.g. a manual fix pushed before the
+  // tag-triggered run). Fetch and rebase to integrate remote-only commits,
+  // then push with an explicit refspec.
+  run('git', ['fetch', 'origin', 'main']);
+  try {
+    run('git', ['rebase', 'FETCH_HEAD']);
+  } catch (e) {
+    console.error('sync-submodule: rebase failed; non-fast-forward or conflict');
+    throw e;
+  }
+  run('git', ['push', 'origin', 'HEAD:main']);
   console.log(`sync-submodule: bumped parent pointer to ${childSha.slice(0, 7)}`);
 }
 
