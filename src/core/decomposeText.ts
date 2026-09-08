@@ -8,7 +8,7 @@
 //
 // Logic MUST stay byte-identical to the original (Copyright 2025 361do_sleep).
 
-import { ADBE, ALERT, CMD_CREATE_TEXT_SHAPE, UNDO } from './constants';
+import { ADBE, ALERT, CMD_CREATE_TEXT_SHAPE, UNDO, type DuplicateMode } from './constants';
 import {
   getPropertyArray,
   getLayerSize,
@@ -16,9 +16,15 @@ import {
   setPosition,
 } from './properties';
 import { degToRad, rotationToMatrix, multiplyMatrix3x3, applyMatrixToOffset } from './matrix';
+import { hasDecompositionArtifacts, removeDecompositionArtifacts } from './duplicate';
 
 export interface DecomposeTextOptions {
   onProgress?: (progress: number, message: string) => void;
+  /**
+   * How to handle layers that look like a previous decomposition. Default: skip.
+   * See DUPLICATE_MODE_LABEL for user-facing descriptions.
+   */
+  duplicateMode?: DuplicateMode;
 }
 
 const STYLE_KEYS = [
@@ -38,7 +44,7 @@ const STYLE_KEYS = [
 ] as const;
 
 export function runDecomposeTextToTextLayers(opts: DecomposeTextOptions = {}): void {
-  const { onProgress } = opts;
+  const { onProgress, duplicateMode = 'skip' } = opts;
 
   try {
     app.beginUndoGroup(UNDO.DecomposeTextToText);
@@ -59,6 +65,19 @@ export function runDecomposeTextToTextLayers(opts: DecomposeTextOptions = {}): v
       return;
     }
 
+    // Cancel-mode short-circuit: if ANY selected layer already looks
+    // decomposed, abort before doing any work.
+    if (duplicateMode === 'cancel') {
+      for (let i = 0; i < selLayers.length; i++) {
+        if (hasDecompositionArtifacts(comp, selLayers[i], 'text')) {
+          alert('Aborted: a selected layer already has a text decomposition. ' +
+                'Re-run with Skip or Overwrite to change existing layers.');
+          app.endUndoGroup();
+          return;
+        }
+      }
+    }
+
     onProgress?.(4, 'Inspecting layers...');
 
     for (let layerIdx = 0; layerIdx < selLayers.length; layerIdx++) {
@@ -76,6 +95,16 @@ export function runDecomposeTextToTextLayers(opts: DecomposeTextOptions = {}): v
       if (hasDeepGlow(textLayer)) {
         alert(ALERT.RemoveDeepGlow + textLayer.name);
         continue;
+      }
+
+      // Skip / overwrite handling: check this source layer's siblings.
+      if (duplicateMode === 'skip' && hasDecompositionArtifacts(comp, textLayer, 'text')) {
+        onProgress?.(layerBase, 'Skipping already-decomposed layer: ' + textLayer.name);
+        continue;
+      }
+      if (duplicateMode === 'overwrite') {
+        const removed = removeDecompositionArtifacts(comp, textLayer, 'text');
+        if (removed > 0) onProgress?.(layerBase, 'Removed ' + removed + ' stale layer(s) for: ' + textLayer.name);
       }
 
       let originalScale: [number, number] = [100, 100];
