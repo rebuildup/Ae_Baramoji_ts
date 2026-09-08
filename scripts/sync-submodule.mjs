@@ -104,8 +104,17 @@ function bumpParentSubmodulePointer(childSha) {
     return;
   }
   run('git', ['commit', '-m', `chore(release): bump Ae_Baramoji submodule to ${childSha.slice(0, 7)}`]);
-  // Same detached HEAD safety: the CI runner checks out the tag in detached
-  // HEAD, so push with an explicit refspec.
+  // The CI runner checks out the tag in detached HEAD. The remote main may
+  // have commits the runner does not (e.g. a manual fix pushed before the
+  // tag-triggered run). Fetch and rebase to integrate remote-only commits,
+  // then push with an explicit refspec.
+  run('git', ['fetch', 'origin', 'main']);
+  try {
+    run('git', ['rebase', 'FETCH_HEAD']);
+  } catch (e) {
+    console.error('sync-submodule: rebase failed; non-fast-forward or conflict');
+    throw e;
+  }
   run('git', ['push', 'origin', 'HEAD:main']);
   console.log(`sync-submodule: bumped parent pointer to ${childSha.slice(0, 7)}`);
 }
