@@ -96,25 +96,23 @@ function commitAndPushSubmodule(parentSha) {
   console.log(`sync-submodule: pushed submodule (${msg})`);
 }
 
-function rebaseSubmoduleOntoRemote() {
+function resetSubmoduleToRemoteMain() {
   // The submodule is checked out in detached HEAD at the SHA recorded by the
-  // parent pointer. If a previous release succeeded, the submodule's remote
-  // main may have advanced past that SHA. We must fetch + rebase onto the
-  // current remote main before mutating the working tree, otherwise the
-  // later push becomes a non-fast-forward. This must run BEFORE copyBuiltFiles
-  // so that the working tree stays clean for the rebase.
+  // parent pointer. If a previous release pushed the submodule forward, the
+  // recorded pointer is behind origin/main. Move the local main branch to
+  // origin/main first so we start our new commit from the correct base and
+  // our subsequent push is a fast-forward.
+  //
+  // Using 'checkout -B main FETCH_HEAD' rather than 'rebase' because the
+  // submodule may be a shallow clone in CI; rebase fails there even for
+  // fast-forward cases.
   if (dryRun) {
-    console.log('sync-submodule: [dry-run] would fetch + rebase submodule onto remote main');
+    console.log('sync-submodule: [dry-run] would reset submodule to remote main');
     return;
   }
   run('git', ['-C', SUBMODULE_DIR, 'fetch', 'origin', 'main']);
-  try {
-    run('git', ['-C', SUBMODULE_DIR, 'rebase', 'FETCH_HEAD']);
-  } catch (e) {
-    console.error('sync-submodule: submodule rebase failed; non-fast-forward or conflict');
-    throw e;
-  }
-  console.log('sync-submodule: rebased submodule onto remote main');
+  run('git', ['-C', SUBMODULE_DIR, 'checkout', '-B', 'main', 'FETCH_HEAD']);
+  console.log('sync-submodule: submodule reset to remote main');
 }
 
 function bumpParentSubmodulePointer(childSha) {
@@ -125,14 +123,16 @@ function bumpParentSubmodulePointer(childSha) {
   }
   run('git', ['commit', '-m', `chore(release): bump Ae_Baramoji submodule to ${childSha.slice(0, 7)}`]);
   // The CI runner checks out the tag in detached HEAD. The remote main may
-  // have commits the runner does not (e.g. a manual fix pushed before the
-  // tag-triggered run). Fetch and rebase to integrate remote-only commits,
-  // then push with an explicit refspec.
+  // have commits the runner does not have (e.g. a manual fix pushed before
+  // the tag-triggered run, or the recorded submodule pointer being ahead of
+  // origin/main). Fetch origin and force-update the local main branch ref so
+  // we publish the correct ancestry. Push with an explicit refspec so the
+  // detached HEAD context still works.
   run('git', ['fetch', 'origin', 'main']);
   try {
-    run('git', ['rebase', 'FETCH_HEAD']);
+    run('git', ['checkout', '-B', 'main', 'FETCH_HEAD']);
   } catch (e) {
-    console.error('sync-submodule: rebase failed; non-fast-forward or conflict');
+    console.error('sync-submodule: parent main checkout from FETCH_HEAD failed');
     throw e;
   }
   run('git', ['push', 'origin', 'HEAD:main']);
@@ -155,7 +155,7 @@ async function main() {
   if (!existsSync(SUBMODULE_DIR)) mkdirSync(SUBMODULE_DIR, { recursive: true });
 
   const sha = parentSha();
-  rebaseSubmoduleOntoRemote();
+  resetSubmoduleToRemoteMain();
   copyBuiltFiles();
   ensureReadmeNotice();
   // Re-run release-zip inside the submodule so Baramooji.zip lives next to its files
