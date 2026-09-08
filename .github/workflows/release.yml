@@ -60,18 +60,19 @@ jobs:
           # change since the previous sync).
           if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
             echo "::notice::Branch $BRANCH does not exist on origin; skipping PR step"
+            exit 0
+          fi
+          # Open the PR if one doesn't already exist for this head branch.
+          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            echo "::notice::PR for $BRANCH already exists; reusing"
           else
-            # Reuse an existing open PR for this branch if one exists, else create.
-            if ! gh pr create \
+            gh pr create \
               --base main \
               --head "$BRANCH" \
               --title "chore(release): bump submodule pointer for ${RELEASE_TAG}" \
-              --body "Automated submodule pointer bump for ${RELEASE_TAG}." \
-              --label "release"; then
-              echo "::notice::gh pr create returned non-zero (PR may already exist); continuing"
-            fi
-            gh pr merge "$BRANCH" --squash --delete-branch --body "Automated release sync for ${RELEASE_TAG}"
+              --body "Automated submodule pointer bump for ${RELEASE_TAG}."
           fi
+          gh pr merge "$BRANCH" --squash --delete-branch --body "Automated release sync for ${RELEASE_TAG}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
