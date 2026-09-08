@@ -94,11 +94,11 @@ function commitAndPushSubmodule(parentSha) {
   // Fall back to --force-with-lease if origin/main has diverged (the recorded
   // submodule pointer may pre-date remote main). We own the distribution
   // repo's main branch, so a controlled force push is acceptable here.
-  pushOrForce('SUBMODULE_DIR');
+  pushOrForceMain('SUBMODULE_DIR');
   console.log(`sync-submodule: pushed submodule (${msg})`);
 }
 
-function pushOrForce(env) {
+function pushOrForceMain(env) {
   // Fetch first so the runner's remote-tracking ref matches remote main
   // before we attempt push; --force-with-lease needs a current lease.
   run('git', ['-C', eval(env), 'fetch', 'origin', 'main']);
@@ -112,6 +112,26 @@ function pushOrForce(env) {
   if (r.status === 0) return;
   console.warn(`sync-submodule: normal push rejected (${r.status}); retrying with --force-with-lease`);
   run('git', ['-C', eval(env), 'push', 'origin', 'HEAD:main', '--force-with-lease']);
+}
+
+function pushParentViaBranch() {
+  // The parent repo's main is branch-protected ("Changes must be made through
+  // a pull request"). Push the pointer-bump commit to a per-tag feature
+  // branch instead; the release workflow opens + merges a PR for it.
+  const tag = process.env.RELEASE_TAG || process.env.GITHUB_REF_NAME || 'manual';
+  const branch = `tmp/release-sync/${tag}`;
+  // Fetch the branch if it exists so --force-with-lease has a current lease.
+  // Tolerate a missing remote ref (first push for this tag).
+  const fr = spawnSync('git', ['fetch', 'origin', branch], { encoding: 'utf8' });
+  if (fr.status !== 0 && !/not found|couldn't find remote ref/i.test(fr.stderr || '')) {
+    throw new Error(`git fetch origin ${branch} exited ${fr.status}: ${fr.stderr}`);
+  }
+  if (dryRun) {
+    console.log(`sync-submodule: [dry-run] would push parent commit to ${branch}`);
+    return;
+  }
+  run('git', ['push', 'origin', `HEAD:${branch}`, '--force-with-lease']);
+  console.log(`sync-submodule: pushed parent branch ${branch}`);
 }
 
 function resetSubmoduleToRemoteMain() {
@@ -139,9 +159,9 @@ function bumpParentSubmodulePointer(childSha) {
     return;
   }
   run('git', ['commit', '-m', `chore(release): bump Ae_Baramoji submodule to ${childSha.slice(0, 7)}`]);
-  // Push via the same fallback helper used for the submodule. Detached HEAD
-  // and shallow clones in CI can prevent a normal push from succeeding.
-  pushOrForce('ROOT');
+  // main is branch-protected; push to a per-tag feature branch and let the
+  // release workflow open + merge a PR.
+  pushParentViaBranch();
   console.log(`sync-submodule: bumped parent pointer to ${childSha.slice(0, 7)}`);
 }
 

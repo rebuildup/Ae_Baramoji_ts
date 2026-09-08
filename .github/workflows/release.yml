@@ -41,7 +41,37 @@ jobs:
           GIT_AUTHOR_EMAIL: bot@rebuildup.local
           GIT_COMMITTER_NAME: ae-baramoji-bot
           GIT_COMMITTER_EMAIL: bot@rebuildup.local
+          # The sync script uses this to name the per-tag feature branch
+          # (tmp/release-sync/<tag>) that bumps the parent submodule pointer.
+          RELEASE_TAG: ${{ github.ref_name }}
         run: bun run release:sync
+
+      # main is branch-protected; the sync script pushes the parent pointer
+      # bump to a per-tag feature branch. Open a PR from that branch and
+      # merge it with the GH_PAT (which has admin perms for this repo).
+      - name: Open and merge parent pointer PR
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          BRANCH="tmp/release-sync/${RELEASE_TAG}"
+          # Skip silently if no parent commit was produced (e.g. no submodule
+          # change since the previous sync).
+          if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "::notice::Branch $BRANCH does not exist on origin; skipping PR step"
+          else
+            # Reuse an existing open PR for this branch if one exists, else create.
+            if ! gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "chore(release): bump submodule pointer for ${RELEASE_TAG}" \
+              --body "Automated submodule pointer bump for ${RELEASE_TAG}." \
+              --label "release"; then
+              echo "::notice::gh pr create returned non-zero (PR may already exist); continuing"
+            fi
+            gh pr merge "$BRANCH" --squash --delete-branch --body "Automated release sync for ${RELEASE_TAG}"
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
