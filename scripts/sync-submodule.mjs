@@ -130,7 +130,7 @@ function pushParentViaBranch() {
     console.log(`sync-submodule: [dry-run] would push parent commit to ${branch}`);
     return;
   }
-  run('git', ['push', 'origin', `HEAD:${branch}`, '--force-with-lease']);
+  run('git', ['push', 'origin', `HEAD:refs/heads/${branch}`, '--force-with-lease']);
   console.log(`sync-submodule: pushed parent branch ${branch}`);
 }
 
