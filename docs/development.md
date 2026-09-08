@@ -34,6 +34,8 @@ submodule は配布リポ `rebuildup/Ae_Baramoji` を参照する。
 | `bun run watch` | rollup watch mode | - |
 | `bun run type-check` | `tsc --noEmit` | ✓ |
 | `bun run lint` | `eslint src/**/*.ts` | ✓ |
+| `bun run test` | `vitest run` (unit tests for `src/core/`) | ✓ |
+| `bun run test:watch` | `vitest` (watch mode) | - |
 | `bun run format` | `prettier --check` | - |
 | `bun run clean` | `rimraf dist` | - |
 | `bun run verify` | 出力 .jsx の構文 / ES3 / IIFE / ヘッダ検査 | ✓ |
@@ -52,11 +54,12 @@ submodule は配布リポ `rebuildup/Ae_Baramoji` を参照する。
 bun install --frozen-lockfile
 bun run type-check
 bun run lint
+bun run test
 bun run build
 bun run verify
 ```
 
-5 コマンドすべて green で「worker gate 通過」とみなす。
+6 コマンドすべて green で「worker gate 通過」とみなす。
 CI (`ci.yml`) も同じ順で実行される。
 
 CI とローカルの差は:
