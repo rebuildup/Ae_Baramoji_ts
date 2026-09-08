@@ -84,20 +84,6 @@ function ensureReadmeNotice() {
 
 function commitAndPushSubmodule(parentSha) {
   const msg = `Sync from Ae_Baramoji_ts @ ${parentSha.slice(0, 7)}`;
-  // The submodule is checked out in detached HEAD at the SHA recorded by the
-  // parent pointer. If the previous release succeeded, the submodule's remote
-  // main may have advanced past that SHA. We must fetch + rebase onto the
-  // current remote main before adding our new commit, otherwise the push will
-  // be a non-fast-forward.
-  if (!dryRun) {
-    run('git', ['-C', SUBMODULE_DIR, 'fetch', 'origin', 'main']);
-    try {
-      run('git', ['-C', SUBMODULE_DIR, 'rebase', 'FETCH_HEAD']);
-    } catch (e) {
-      console.error('sync-submodule: submodule rebase failed; non-fast-forward or conflict');
-      throw e;
-    }
-  }
   run('git', ['-C', SUBMODULE_DIR, 'add', '--', ...FILES, 'README.md', 'Baramoji.zip']);
   if (dryRun) {
     console.log(`sync-submodule: [dry-run] would commit in submodule: ${msg}`);
@@ -108,6 +94,27 @@ function commitAndPushSubmodule(parentSha) {
   // of relying on the current branch ref, which is undefined in detached HEAD.
   run('git', ['-C', SUBMODULE_DIR, 'push', 'origin', 'HEAD:main']);
   console.log(`sync-submodule: pushed submodule (${msg})`);
+}
+
+function rebaseSubmoduleOntoRemote() {
+  // The submodule is checked out in detached HEAD at the SHA recorded by the
+  // parent pointer. If a previous release succeeded, the submodule's remote
+  // main may have advanced past that SHA. We must fetch + rebase onto the
+  // current remote main before mutating the working tree, otherwise the
+  // later push becomes a non-fast-forward. This must run BEFORE copyBuiltFiles
+  // so that the working tree stays clean for the rebase.
+  if (dryRun) {
+    console.log('sync-submodule: [dry-run] would fetch + rebase submodule onto remote main');
+    return;
+  }
+  run('git', ['-C', SUBMODULE_DIR, 'fetch', 'origin', 'main']);
+  try {
+    run('git', ['-C', SUBMODULE_DIR, 'rebase', 'FETCH_HEAD']);
+  } catch (e) {
+    console.error('sync-submodule: submodule rebase failed; non-fast-forward or conflict');
+    throw e;
+  }
+  console.log('sync-submodule: rebased submodule onto remote main');
 }
 
 function bumpParentSubmodulePointer(childSha) {
@@ -148,6 +155,7 @@ async function main() {
   if (!existsSync(SUBMODULE_DIR)) mkdirSync(SUBMODULE_DIR, { recursive: true });
 
   const sha = parentSha();
+  rebaseSubmoduleOntoRemote();
   copyBuiltFiles();
   ensureReadmeNotice();
   // Re-run release-zip inside the submodule so Baramooji.zip lives next to its files
