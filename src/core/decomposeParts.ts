@@ -11,16 +11,22 @@
 // `anchor.ts`. Logic MUST stay byte-identical so the result matches the legacy
 // output.
 
-import { ADBE, ALERT, CMD_CREATE_TEXT_SHAPE, UNDO } from './constants';
+import { ADBE, ALERT, CMD_CREATE_TEXT_SHAPE, UNDO, type DuplicateMode } from './constants';
 import { captureBasicProperties, applyBasicProperties, type LayerProperties } from './properties';
 import { adjustAnchorPoint } from './anchor';
+import { hasDecompositionArtifacts, removeDecompositionArtifacts } from './duplicate';
 
 export interface DecomposePartsOptions {
   onProgress?: (progress: number, message: string) => void;
+  /**
+   * How to handle layers that look like a previous decomposition. Default: skip.
+   * See DUPLICATE_MODE_LABEL for user-facing descriptions.
+   */
+  duplicateMode?: DuplicateMode;
 }
 
 export function runDecomposeTextToShapeParts(opts: DecomposePartsOptions = {}): void {
-  const { onProgress } = opts;
+  const { onProgress, duplicateMode = 'skip' } = opts;
 
   try {
     app.beginUndoGroup(UNDO.DecomposeTextToParts);
@@ -38,6 +44,17 @@ export function runDecomposeTextToShapeParts(opts: DecomposePartsOptions = {}): 
       alert(ALERT.NoLayersParts);
       app.endUndoGroup();
       return;
+    }
+
+    if (duplicateMode === 'cancel') {
+      for (let i = 0; i < selectedLayers.length; i++) {
+        if (hasDecompositionArtifacts(comp, selectedLayers[i], 'parts')) {
+          alert('Aborted: a selected layer already has a parts decomposition. ' +
+                'Re-run with Skip or Overwrite to change existing layers.');
+          app.endUndoGroup();
+          return;
+        }
+      }
     }
 
     try {
@@ -85,6 +102,16 @@ export function runDecomposeTextToShapeParts(opts: DecomposePartsOptions = {}): 
 
         const currentLayer = comp.layers[layerIndex] as Layer;
         currentLayer.selected = true;
+
+        if (duplicateMode === 'skip' && hasDecompositionArtifacts(comp, currentLayer, 'parts')) {
+          onProgress?.(Math.round((i / totalSteps) * 80), 'Skipping already-decomposed layer: ' + currentLayer.name);
+          currentLayer.selected = false;
+          continue;
+        }
+        if (duplicateMode === 'overwrite') {
+          const removed = removeDecompositionArtifacts(comp, currentLayer, 'parts');
+          if (removed > 0) onProgress?.(Math.round((i / totalSteps) * 80), 'Removed ' + removed + ' stale layer(s) for: ' + currentLayer.name);
+        }
 
         let baseShapeLayer: Layer;
         if (currentLayer instanceof (globalThis as any).TextLayer) {

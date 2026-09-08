@@ -17,15 +17,21 @@
 //   8. Select the result layers.
 
 import { adjustAnchorPoint } from './anchor';
-import { ADBE, ALERT, CMD_CREATE_TEXT_SHAPE, UNDO } from './constants';
+import { ADBE, ALERT, CMD_CREATE_TEXT_SHAPE, UNDO, type DuplicateMode } from './constants';
+import { hasDecompositionArtifacts, removeDecompositionArtifacts } from './duplicate';
 
 export interface DecomposeShapeOptions {
   /** Called after each layer is processed. progress in 0-100. */
   onProgress?: (progress: number, message: string) => void;
+  /**
+   * How to handle layers that look like a previous decomposition. Default: skip.
+   * See DUPLICATE_MODE_LABEL for user-facing descriptions.
+   */
+  duplicateMode?: DuplicateMode;
 }
 
 export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}): void {
-  const { onProgress } = opts;
+  const { onProgress, duplicateMode = 'skip' } = opts;
 
   try {
     app.beginUndoGroup(UNDO.DecomposeTextToShape);
@@ -48,6 +54,17 @@ export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}):
       return;
     }
 
+    if (duplicateMode === 'cancel') {
+      for (let i = 0; i < selLayers.length; i++) {
+        if (hasDecompositionArtifacts(comp, selLayers[i], 'shape')) {
+          alert('Aborted: a selected layer already has a shape decomposition. ' +
+                'Re-run with Skip or Overwrite to change existing layers.');
+          app.endUndoGroup();
+          return;
+        }
+      }
+    }
+
     for (let layerIdx = 0; layerIdx < selLayers.length; layerIdx++) {
       const layerSpan = 60;
       const layerBase = 8 + Math.round((layerIdx / Math.max(1, selLayers.length)) * 10);
@@ -59,6 +76,15 @@ export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}):
       const textLayer = selLayers[layerIdx];
       if (!(textLayer instanceof (globalThis as any).TextLayer)) {
         continue;
+      }
+
+      if (duplicateMode === 'skip' && hasDecompositionArtifacts(comp, textLayer, 'shape')) {
+        onProgress?.(layerBase, 'Skipping already-decomposed layer: ' + textLayer.name);
+        continue;
+      }
+      if (duplicateMode === 'overwrite') {
+        const removed = removeDecompositionArtifacts(comp, textLayer, 'shape');
+        if (removed > 0) onProgress?.(layerBase, 'Removed ' + removed + ' stale layer(s) for: ' + textLayer.name);
       }
 
       const layerInPoint = textLayer.inPoint;

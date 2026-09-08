@@ -11,9 +11,9 @@ import {
 
 (function BaramojiEntry(this: unknown): void {
   const win = buildPalette({
-    onTexts: () => runDecomposeTextToTextLayers(),
-    onShapes: () => runDecomposeTextToShapeLayers(),
-    onParts: () => runDecomposeTextToShapeParts(),
+    onTexts: (mode) => runDecomposeTextToTextLayers({ duplicateMode: mode }),
+    onShapes: (mode) => runDecomposeTextToShapeLayers({ duplicateMode: mode }),
+    onParts: (mode) => runDecomposeTextToShapeParts({ duplicateMode: mode }),
   });
   (win as any).center();
   (win as any).show();

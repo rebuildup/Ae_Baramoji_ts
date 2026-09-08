@@ -1,6 +1,6 @@
 {
   "name": "ae-baramoji-ts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript source-of-truth for Ae_Baramoji. Builds ExtendScript .jsx files and syncs them to the distribution repository.",
   "private": true,
   "type": "module",
@@ -11,11 +11,15 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --check \"src/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rimraf dist",
     "verify": "node scripts/verify-build.mjs",
+    "verify:zip": "node scripts/verify-zip.mjs",
+    "release:checksums": "node scripts/checksums.mjs",
     "release:zip": "node scripts/release-zip.mjs",
     "release:sync": "node scripts/sync-submodule.mjs",
-    "release": "bun run clean && bun run build && bun run verify && bun run release:sync"
+    "release": "bun run clean && bun run build && bun run verify && bun run release:checksums && bun run release:sync"
   },
   "dependencies": {
     "types-for-adobe": "^7.0.12"
@@ -32,7 +36,8 @@
     "rimraf": "^5.0.10",
     "rollup": "^4.21.0",
     "tslib": "^2.6.2",
-    "typescript": "5.3.2"
+    "typescript": "5.3.2",
+    "vitest": "^1.6.0"
   },
   "engines": {
     "bun": ">=1.4"

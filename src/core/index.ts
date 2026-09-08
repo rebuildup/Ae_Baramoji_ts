@@ -7,6 +7,7 @@ export * from './ui';
 export * from './properties';
 export * from './matrix';
 export * from './anchor';
+export * from './duplicate';
 export * from './decomposeShape';
 export * from './decomposeParts';
 export * from './decomposeText';

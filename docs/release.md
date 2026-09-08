@@ -84,9 +84,18 @@ CI は dry-run しない。CI で tag を消したい場合は `git tag -d vX.Y.
 
 ## 8. Checklist (release 前)
 
-- [ ] `bun run type-check && bun run lint && bun run build && bun run verify` green
+- [ ] `bun run type-check && bun run lint && bun run test && bun run build && bun run verify` green
 - [ ] release branch の全 PR merged
 - [ ] CI 必須 check 全 green
 - [ ] submodule pointer が最新
-- [ ] `dist/Baramoji.zip` の SHA-256 を release notes に記載
+- [x] `dist/Baramoji.zip` の SHA-256 を release notes に記載 (`bun run release:checksums` で自動生成)
 - [ ] ローカル AE で手動 smoke (`Baramoi_*.jsx` 各 1 回)
+
+release 配布物の SHA-256 検証:
+
+```bash
+# リポ root で
+bun run verify:zip dist/checksums.txt
+# または
+sha256sum -c dist/checksums.txt
+```

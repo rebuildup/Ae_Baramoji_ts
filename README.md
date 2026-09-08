@@ -35,6 +35,8 @@ notes に記載する。
 
 ```bash
 bun run release:zip                    # dist/ → release/Ae_Baramoji/Baramoji.zip
+bun run release:checksums              # SHA-256 → dist/checksums.txt
+bun run verify:zip dist/checksums.txt  # 生成 artifact を SHA-256 検証
 bun run release:sync -- --dry-run      # submodule への反映を確認
 bun run release                        # clean → build → verify → sync
 ```
