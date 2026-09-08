@@ -37,6 +37,31 @@ export const UNDO = {
   DecomposeTextToParts: 'Text to Parts Decompose',
 } as const;
 
+/** User-selectable handling for layers that have already been decomposed. */
+export type DuplicateMode = 'skip' | 'overwrite' | 'cancel';
+
+export const DUPLICATE_MODE = {
+  Skip: 'skip',
+  Overwrite: 'overwrite',
+  Cancel: 'cancel',
+} as const;
+
+/** Localised label / description for each DuplicateMode (used by palette + _win modal). */
+export const DUPLICATE_MODE_LABEL: Record<DuplicateMode, { name: string; description: string }> = {
+  skip: {
+    name: 'Skip existing',
+    description: 'Skip source layers that already have a decomposition in this comp.',
+  },
+  overwrite: {
+    name: 'Overwrite',
+    description: 'Delete the previous decomposition and re-run from scratch.',
+  },
+  cancel: {
+    name: 'Cancel (do nothing)',
+    description: 'Abort the run if any selected layer already has a decomposition.',
+  },
+};
+
 // Default alert / dialog text.
 export const ALERT = {
   NoCompositionText:
