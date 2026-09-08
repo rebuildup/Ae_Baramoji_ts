@@ -84,7 +84,7 @@ CI は dry-run しない。CI で tag を消したい場合は `git tag -d vX.Y.
 
 ## 8. Checklist (release 前)
 
-- [ ] `bun run type-check && bun run lint && bun run build && bun run verify` green
+- [ ] `bun run type-check && bun run lint && bun run test && bun run build && bun run verify` green
 - [ ] release branch の全 PR merged
 - [ ] CI 必須 check 全 green
 - [ ] submodule pointer が最新
