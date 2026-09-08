@@ -1,0 +1,40 @@
+{
+  "name": "ae-baramoji-ts",
+  "version": "0.1.0",
+  "description": "TypeScript source-of-truth for Ae_Baramoji. Builds ExtendScript .jsx files and syncs them to the distribution repository.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint \"src/**/*.ts\"",
+    "format": "prettier --check \"src/**/*.ts\"",
+    "clean": "rimraf dist",
+    "verify": "node scripts/verify-build.mjs",
+    "release:zip": "node scripts/release-zip.mjs",
+    "release:sync": "node scripts/sync-submodule.mjs",
+    "release": "npm run clean && npm run build && npm run verify && npm run release:sync"
+  },
+  "dependencies": {
+    "types-for-adobe": "^7.0.12"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.3.0",
+    "@rollup/plugin-typescript": "^12.1.1",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "archiver": "^7.0.1",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.0",
+    "rimraf": "^5.0.10",
+    "rollup": "^4.21.0",
+    "tslib": "^2.6.2",
+    "typescript": "5.3.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

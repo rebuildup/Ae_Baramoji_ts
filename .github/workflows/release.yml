@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build, sync submodule, create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # GH_PAT must have write access to BOTH the parent repo and the
+          # distribution repo (rebuildup/Ae_Baramoji). Default GITHUB_TOKEN
+          # cannot push to a different repo.
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify build outputs
+        run: npm run verify
+
+      - name: Sync to submodule
+        env:
+          GIT_AUTHOR_NAME: ae-baramoji-bot
+          GIT_AUTHOR_EMAIL: bot@rebuildup.local
+          GIT_COMMITTER_NAME: ae-baramoji-bot
+          GIT_COMMITTER_EMAIL: bot@rebuildup.local
+        run: npm run release:sync
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/Ae_Baramoji/Baramoji.zip
+          generate_release_notes: true

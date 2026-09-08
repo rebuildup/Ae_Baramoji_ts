@@ -1,0 +1,4 @@
+[submodule "release/Ae_Baramoji"]
+	path = release/Ae_Baramoji
+	url = https://github.com/rebuildup/Ae_Baramoji.git
+	branch = main
