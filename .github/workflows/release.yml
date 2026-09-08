@@ -35,6 +35,12 @@ jobs:
       - name: Verify build outputs
         run: bun run verify
 
+      - name: Compute SHA-256 checksums
+        run: |
+          bun run release:zip
+          bun run release:checksums
+          bun run verify:zip dist/checksums.txt
+
       - name: Sync to submodule
         env:
           GIT_AUTHOR_NAME: ae-baramoji-bot
@@ -45,6 +51,23 @@ jobs:
           # (tmp/release-sync/<tag>) that bumps the parent submodule pointer.
           RELEASE_TAG: ${{ github.ref_name }}
         run: bun run release:sync
+
+      # Embed the checksums in the GitHub Release body so users can verify
+      # downloads without opening a separate asset. softprops/action-gh-release
+      # reads `body_path` for the release notes.
+      - name: Build release body
+        run: |
+          {
+            echo "## SHA-256 checksums"
+            echo ""
+            echo '```'
+            cat dist/checksums.txt
+            echo '```'
+            echo ""
+            echo "Verify locally with \`sha256sum -c dist/checksums.txt\` from the project root,"
+            echo "or download \`checksums.txt\` next to \`Baramoji.zip\` and compare the \`Baramoji.zip\` line."
+          } > release-notes-body.md
+          ls -l release-notes-body.md
 
       # main is branch-protected; the sync script pushes the parent pointer
       # bump to a per-tag feature branch. Open a PR from that branch and
@@ -77,5 +100,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/Ae_Baramoji/Baramoji.zip
+          files: |
+            release/Ae_Baramoji/Baramoji.zip
+            dist/checksums.txt
           generate_release_notes: true
+          body_path: release-notes-body.md

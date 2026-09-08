@@ -37,7 +37,9 @@ submodule は配布リポ `rebuildup/Ae_Baramoji` を参照する。
 | `bun run format` | `prettier --check` | - |
 | `bun run clean` | `rimraf dist` | - |
 | `bun run verify` | 出力 .jsx の構文 / ES3 / IIFE / ヘッダ検査 | ✓ |
+| `bun run verify:zip` | `dist/checksums.txt` に対して release artifact を SHA-256 検証 | - |
 | `bun run release:zip` | 7 .jsx → `Baramoji.zip` | ✓ (release workflow) |
+| `bun run release:checksums` | `dist/checksums.txt` を生成 (sha256sum 互換) | ✓ (release workflow) |
 | `bun run release:sync` | 配布 submodule へ sync | ✓ (release workflow) |
 | `bun run release` | clean → build → verify → sync | - |
 
