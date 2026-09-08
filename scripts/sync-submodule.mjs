@@ -99,6 +99,9 @@ function commitAndPushSubmodule(parentSha) {
 }
 
 function pushOrForce(env) {
+  // Fetch first so the runner's remote-tracking ref matches remote main
+  // before we attempt push; --force-with-lease needs a current lease.
+  run('git', ['-C', eval(env), 'fetch', 'origin', 'main']);
   // Try a normal push first (fast-forward friendly); on non-fast-forward,
   // retry with --force-with-lease so release workflows are robust against
   // shallow or stale clones in CI.
