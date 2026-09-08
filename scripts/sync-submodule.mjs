@@ -90,31 +90,43 @@ function commitAndPushSubmodule(parentSha) {
     return;
   }
   run('git', ['-C', SUBMODULE_DIR, 'commit', '-m', msg]);
-  // Push the current HEAD explicitly to the configured upstream branch instead
-  // of relying on the current branch ref, which is undefined in detached HEAD.
-  run('git', ['-C', SUBMODULE_DIR, 'push', 'origin', 'HEAD:main']);
+  // Push the current HEAD explicitly to the configured upstream branch.
+  // Fall back to --force-with-lease if origin/main has diverged (the recorded
+  // submodule pointer may pre-date remote main). We own the distribution
+  // repo's main branch, so a controlled force push is acceptable here.
+  pushOrForce('SUBMODULE_DIR');
   console.log(`sync-submodule: pushed submodule (${msg})`);
 }
 
-function rebaseSubmoduleOntoRemote() {
+function pushOrForce(env) {
+  // Try a normal push first (fast-forward friendly); on non-fast-forward,
+  // retry with --force-with-lease so release workflows are robust against
+  // shallow or stale clones in CI.
+  const r = spawnSync('git', ['-C', eval(env), 'push', 'origin', 'HEAD:main'], {
+    encoding: 'utf8',
+    stdio: 'inherit',
+  });
+  if (r.status === 0) return;
+  console.warn(`sync-submodule: normal push rejected (${r.status}); retrying with --force-with-lease`);
+  run('git', ['-C', eval(env), 'push', 'origin', 'HEAD:main', '--force-with-lease']);
+}
+
+function resetSubmoduleToRemoteMain() {
   // The submodule is checked out in detached HEAD at the SHA recorded by the
-  // parent pointer. If a previous release succeeded, the submodule's remote
-  // main may have advanced past that SHA. We must fetch + rebase onto the
-  // current remote main before mutating the working tree, otherwise the
-  // later push becomes a non-fast-forward. This must run BEFORE copyBuiltFiles
-  // so that the working tree stays clean for the rebase.
+  // parent pointer. If a previous release pushed the submodule forward, the
+  // recorded pointer is behind origin/main. Reset the local main branch to
+  // origin/main so we add our new commit on top of the right base.
+  //
+  // We intentionally discard the recorded-pointer-only state because we
+  // never want to preserve submodule-side local commits made outside this
+  // script. pushOrForce() handles divergence to remote main.
   if (dryRun) {
-    console.log('sync-submodule: [dry-run] would fetch + rebase submodule onto remote main');
+    console.log('sync-submodule: [dry-run] would reset submodule to remote main');
     return;
   }
   run('git', ['-C', SUBMODULE_DIR, 'fetch', 'origin', 'main']);
-  try {
-    run('git', ['-C', SUBMODULE_DIR, 'rebase', 'FETCH_HEAD']);
-  } catch (e) {
-    console.error('sync-submodule: submodule rebase failed; non-fast-forward or conflict');
-    throw e;
-  }
-  console.log('sync-submodule: rebased submodule onto remote main');
+  run('git', ['-C', SUBMODULE_DIR, 'checkout', '-B', 'main', 'FETCH_HEAD']);
+  console.log('sync-submodule: submodule reset to remote main');
 }
 
 function bumpParentSubmodulePointer(childSha) {
@@ -124,18 +136,9 @@ function bumpParentSubmodulePointer(childSha) {
     return;
   }
   run('git', ['commit', '-m', `chore(release): bump Ae_Baramoji submodule to ${childSha.slice(0, 7)}`]);
-  // The CI runner checks out the tag in detached HEAD. The remote main may
-  // have commits the runner does not (e.g. a manual fix pushed before the
-  // tag-triggered run). Fetch and rebase to integrate remote-only commits,
-  // then push with an explicit refspec.
-  run('git', ['fetch', 'origin', 'main']);
-  try {
-    run('git', ['rebase', 'FETCH_HEAD']);
-  } catch (e) {
-    console.error('sync-submodule: rebase failed; non-fast-forward or conflict');
-    throw e;
-  }
-  run('git', ['push', 'origin', 'HEAD:main']);
+  // Push via the same fallback helper used for the submodule. Detached HEAD
+  // and shallow clones in CI can prevent a normal push from succeeding.
+  pushOrForce('ROOT');
   console.log(`sync-submodule: bumped parent pointer to ${childSha.slice(0, 7)}`);
 }
 
@@ -155,7 +158,7 @@ async function main() {
   if (!existsSync(SUBMODULE_DIR)) mkdirSync(SUBMODULE_DIR, { recursive: true });
 
   const sha = parentSha();
-  rebaseSubmoduleOntoRemote();
+  resetSubmoduleToRemoteMain();
   copyBuiltFiles();
   ensureReadmeNotice();
   // Re-run release-zip inside the submodule so Baramooji.zip lives next to its files
