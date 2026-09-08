@@ -82,10 +82,10 @@ src/entries/*.ts
        │ rollup -c (IIFE)
        ▼
 dist/*.jsx  (7 files)
-       │ npm run release:zip
+       │ bun run release:zip
        ▼
 release/Ae_Baramoji/Baramoji.zip
-       │ npm run release:sync (submodule commit + parent pointer bump)
+       │ bun run release:sync (submodule commit + parent pointer bump)
        ▼
 rebuildup/Ae_Baramoji (配布リポ)
 ```
@@ -145,6 +145,6 @@ src/entries/*.ts  →  src/core/*.ts  →  src/types/*.d.ts  →  types-for-adob
 
 - [ ] `docs/decisions/` に ADR 起票するか確認
 - [ ] 公開 I/F (エントリ名 / UI / 出力) を変更しないか確認
-- [ ] `npm run type-check && npm run lint && npm run build && npm run verify`
+- [ ] `bun run type-check && bun run lint && bun run build && bun run verify`
       すべて green
 - [ ] CI (`.github/workflows/ci.yml`) の step と一致

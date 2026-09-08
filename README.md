@@ -19,13 +19,13 @@ After Effects 用 ExtendScript (`.jsx`) 配布物 `Ae_Baramoji` の **TypeScript
 ```bash
 git clone --recurse-submodules https://github.com/rebuildup/Ae_Baramoji_ts.git
 cd Ae_Baramoji_ts
-npm ci
+bun install --frozen-lockfile
 git submodule update --init --recursive
 
-npm run type-check
-npm run lint
-npm run build
-npm run verify
+bun run type-check
+bun run lint
+bun run build
+bun run verify
 ```
 
 7 本の `.jsx` が `dist/` に生成される。Build artifact の SHA-256 は release
@@ -34,9 +34,9 @@ notes に記載する。
 ## 配布
 
 ```bash
-npm run release:zip                    # dist/ → release/Ae_Baramoji/Baramoji.zip
-npm run release:sync -- --dry-run      # submodule への反映を確認
-npm run release                        # clean → build → verify → sync
+bun run release:zip                    # dist/ → release/Ae_Baramoji/Baramoji.zip
+bun run release:sync -- --dry-run      # submodule への反映を確認
+bun run release                        # clean → build → verify → sync
 ```
 
 CI (`.github/workflows/release.yml`) は `v*` タグ push で自動実行。
@@ -61,7 +61,7 @@ CI (`.github/workflows/release.yml`) は `v*` タグ push で自動実行。
 1. Issue 起票 (`.github/ISSUE_TEMPLATE/{bug,feature,security}.yml`)
 2. ticket branch `<issue-number>` を `main` から切る
 3. `release-x-y-z` へ向けて Draft PR を出す
-4. `npm run type-check && npm run lint && npm run build && npm run verify` を通す
+4. `bun run type-check && bun run lint && bun run build && bun run verify` を通す
 5. reviewer 別 agent で integration 確認 → Ready → merge
 6. release branch merge → tag push → CI が GitHub Release まで自動化
 

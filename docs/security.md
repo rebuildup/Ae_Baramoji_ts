@@ -8,7 +8,7 @@
 
 セキュリティ risk surface は主に以下 3 つに限定される:
 
-1. **dependency compromise** — npm パッケージ (`types-for-adobe`,
+1. **dependency compromise** — Bun で入れた npm registry パッケージ (`types-for-adobe`,
    `rollup`, `archiver`, `eslint`, ...) の改ざん
 2. **submodule upstream / push 認証情報漏洩** — `secrets.GH_PAT`
 3. **release 成果物への恶意混入** — submodule へ不正コードが push される
@@ -21,21 +21,22 @@
 
 1. framework / runtime / SDK 公式 advisory (Node.js, TypeScript, Rollup, ESLint)
 2. GitHub Security Advisories (Dependabot alerts)
-3. ecosystem official (npm audit)
+3. ecosystem official (npm audit / GitHub Advisory Database)
 4. GitHub Security Advisories (manual)
 5. trusted secondary source
 
 ### scheduled check
 
-- CI で `npm audit --omit=dev --audit-level=high` を release gate 前に実行
+- CI で `bun audit --audit-level=high` を release gate 前に実行
+  (Bun の audit は npm registry advisory と互換)
 - Dependabot の PR を `release-x-y-z` branch へ直接取り込まない。
   必ず別 ticket を起こして評価してから merge する。
 
 ### 当該 version との紐付け
 
-`package-lock.json` の commit SHA を起点に、npm advisory の影響範囲を
-確認する。production runtime (After Effects) と dev environment で
-影響度が異なることに注意。
+`bun.lock` の lockfileVersion と package resolution を起点に、npm
+advisory の影響範囲を確認する。production runtime (After Effects) と
+dev environment で影響度が異なることに注意。
 
 ## 3. Secret 扱い
 

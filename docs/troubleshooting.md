@@ -3,7 +3,7 @@
 典型障害と切り分け。深堀りする前に `docs/architecture.md` / `docs/quality-profile.md`
 を確認すること。
 
-## 1. `npm run build` が落ちる
+## 1. `bun run build` が落ちる
 
 ### 症状: `Could not resolve ../types/index` が出る
 
@@ -13,7 +13,7 @@
 ### 症状: 出力 `.jsx` に ES5+ 構文が混入
 
 - 原因: tsconfig の `target` / `lib` の不整合、TS 5 の新構文が混入。
-- 対処: `npm run verify` の出力を確認 → `// ES3 violation` 行を読む。
+- 対処: `bun run verify` の出力を確認 → `// ES3 violation` 行を読む。
   修正: 当該行を `var x = ...` と明示的に書き換える、または `extendscript-shims.d.ts`
   の `declare global` で吸収する。
 
@@ -22,7 +22,7 @@
 - 原因: init polyfill (`src/init.ts`) の import 漏れ。
 - 対処: 各 entry の先頭に `import './init';` があるか確認。
 
-## 2. `npm run verify` が落ちる
+## 2. `bun run verify` が落ちる
 
 ### 症状: `node --check` が失敗
 
@@ -88,7 +88,7 @@
 - 対処:
   - TS の arrow function 化を `function` へ明示
   - `declare global` の shims で型を揃え、polyfill は `src/init.ts` に集約
-  - `npm run verify` の grep は hot な正典
+  - `bun run verify` の grep は hot な正典
 
 ## 7. ExtendScript 実機で動かない
 

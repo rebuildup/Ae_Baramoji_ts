@@ -52,8 +52,8 @@ fresh agent は次の順で再構成する:
 8. **child result を回収**: immutable commit / diff
 9. **stale base / conflicting integration を判定**: rebase 計画
 10. **再構築 plan を再評価**: issue 単位で再 plan
-11. **worker gate を再実行**: `npm run type-check && npm run lint &&
-    npm run build && npm run verify`
+11. **worker gate を再実行**: `bun run type-check && bun run lint &&
+    bun run build && bun run verify`
 12. **execution generation / lease を bump** して続行
 
 ## 4. Structured checkpoint

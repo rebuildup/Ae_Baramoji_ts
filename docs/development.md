@@ -4,9 +4,9 @@
 
 ## 1. 必要環境
 
-- Node.js >= 20
-- Bun (`/home/basic/.bun/bin/bun`) — Skill CLI に利用
+- Bun >= 1.4 (`/home/basic/.bun/bin/bun`) — package manager、build runner、Skill CLI
 - git >= 2.30 (`submodules: recursive` 対応)
+- Node.js は Bun 内に同梱されていれば十分 (CI は `oven-sh/setup-bun@v2` で固定)
 - macOS / Linux / WSL2 のいずれか
 
 ExtendScript 実機検証は After Effects が必要 (任意)。
@@ -16,9 +16,11 @@ ExtendScript 実機検証は After Effects が必要 (任意)。
 ```bash
 git clone --recurse-submodules https://github.com/rebuildup/Ae_Baramoji_ts.git
 cd Ae_Baramoji_ts
-npm ci
+bun install --frozen-lockfile
 git submodule update --init --recursive
 ```
+
+`bun.lock` は commit する。再現性のため lockfile 更新は CI で検出する。
 
 submodule は配布リポ `rebuildup/Ae_Baramoji` を参照する。
 配布リポへの push 権限が必要な場合は `secrets.GH_PAT` (両方リポに write) を使う。
@@ -28,16 +30,16 @@ submodule は配布リポ `rebuildup/Ae_Baramoji` を参照する。
 
 | script | 用途 | CI 対応 |
 |---|---|---|
-| `npm run build` | `dist/*.jsx` 7本生成 | ✓ |
-| `npm run watch` | rollup watch mode | - |
-| `npm run type-check` | `tsc --noEmit` | ✓ |
-| `npm run lint` | `eslint src/**/*.ts` | ✓ |
-| `npm run format` | `prettier --check` | - |
-| `npm run clean` | `rimraf dist` | - |
-| `npm run verify` | 出力 .jsx の構文 / ES3 / IIFE / ヘッダ検査 | ✓ |
-| `npm run release:zip` | 7 .jsx → `Baramoji.zip` | ✓ (release workflow) |
-| `npm run release:sync` | 配布 submodule へ sync | ✓ (release workflow) |
-| `npm run release` | clean → build → verify → sync | - |
+| `bun run build` | `dist/*.jsx` 7本生成 | ✓ |
+| `bun run watch` | rollup watch mode | - |
+| `bun run type-check` | `tsc --noEmit` | ✓ |
+| `bun run lint` | `eslint src/**/*.ts` | ✓ |
+| `bun run format` | `prettier --check` | - |
+| `bun run clean` | `rimraf dist` | - |
+| `bun run verify` | 出力 .jsx の構文 / ES3 / IIFE / ヘッダ検査 | ✓ |
+| `bun run release:zip` | 7 .jsx → `Baramoji.zip` | ✓ (release workflow) |
+| `bun run release:sync` | 配布 submodule へ sync | ✓ (release workflow) |
+| `bun run release` | clean → build → verify → sync | - |
 
 `release` workflow は CI 専用。ローカルの動作確認には `release:zip` / `release:sync` を
 個別に使う。`release:sync` には `--dry-run` フラグあり。
@@ -45,11 +47,11 @@ submodule は配布リポ `rebuildup/Ae_Baramoji` を参照する。
 ## 4. Validation entry point (canonical)
 
 ```bash
-npm ci            # 依存解決
-npm run type-check
-npm run lint
-npm run build
-npm run verify
+bun install --frozen-lockfile
+bun run type-check
+bun run lint
+bun run build
+bun run verify
 ```
 
 5 コマンドすべて green で「worker gate 通過」とみなす。
@@ -57,7 +59,7 @@ CI (`ci.yml`) も同じ順で実行される。
 
 CI とローカルの差は:
 
-- CI: Linux + Node 20固定、キャッシュあり
+- CI: Linux + Bun 1.4.2 固定
 - local: macOS / WSL / native Linux
 
 entry point を変えない (policy §21: local と CI で同じ deterministic entry point)。
@@ -72,12 +74,14 @@ entry point を変えない (policy §21: local と CI で同じ deterministic e
   `chore`, `docs`, `refactor`, `test`, `build` のいずれか。
 - 1 commit = 1 intent。mid-state を commit しない。
 - `dist/` は commit しない (`.gitignore` で除外済み)。
+- `bun.lock` は commit する (再現性のため)。
 
 ## 6. 推奨ツール
 
 - text search: `rg` / `rg --files`
-- package manager: npm (Bun は Skill discovery のみ、ビルドは npm)
+- package manager: Bun (`bun install`, `bun run`, `bunx skills`)
 - validator: `node --check` (構文) + `scripts/verify-build.mjs` (ES3 / IIFE)
+  - `scripts/*.mjs` は Bun 内蔵 JS runtime で実行されるが、外部依存がないため Node.js でも動く
 - Skill discovery: `bunx skills list`
 
 ## 7. ローカルで submodule を触りたい場合
@@ -90,4 +94,4 @@ git -C release/Ae_Baramoji log --oneline -5
 ```
 
 変更が必要なら本リポ側でビルドし直すこと。
-dry-run で動作確認する場合は `npm run release:sync -- --dry-run`。
+dry-run で動作確認する場合は `bun run release:sync -- --dry-run`。

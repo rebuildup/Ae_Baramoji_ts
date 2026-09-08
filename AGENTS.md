@@ -45,11 +45,11 @@ canonical source を優先する (policy §4)。
 ## 4. Validation entry point
 
 ```bash
-npm ci
-npm run type-check
-npm run lint
-npm run build
-npm run verify
+bun install --frozen-lockfile
+bun run type-check
+bun run lint
+bun run build
+bun run verify
 ```
 
 CI は `.github/workflows/ci.yml` が同じ entry point を順に実行する。
@@ -63,6 +63,6 @@ fresh agent / 別 sandbox からの再開は `docs/recovery.md` を最優先で�
 
 ## 6. Skill discovery
 
-project-local Skill は `skills/` 配下。`bunx skills list` で発見できる。
+project-local Skill は `.agents/skills/` 配下。`bunx skills list` で発見できる。
 新規 Skill 追加は `docs/decisions/` 配下の ADR と合わせて行う。
 global 設定は project truth にしない。

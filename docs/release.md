@@ -36,9 +36,9 @@ semver:
 `.github/workflows/release.yml` は `v*` tag push で起動する:
 
 1. checkout (submodules: recursive, token: GH_PAT)
-2. `npm ci`
-3. `npm run clean && npm run build && npm run verify`
-4. `npm run release:sync` (配布 submodule へ push)
+2. `bun install --frozen-lockfile`
+3. `bun run clean && bun run build && bun run verify`
+4. `bun run release:sync` (配布 submodule へ push)
 5. 親リポ側で submodule pointer bump を commit
 6. GitHub Release 作成 + `Baramoji.zip` 添付
 
@@ -62,8 +62,8 @@ ticket → release → main の順に verification level を上げる (policy §
 ## 5. Dry run
 
 ```bash
-npm run release:zip                    # zip を release/Ae_Baramoji/ に作る
-npm run release:sync -- --dry-run     # submodule / parent 変更を実際には記録しない
+bun run release:zip                    # zip を release/Ae_Baramoji/ に作る
+bun run release:sync -- --dry-run     # submodule / parent 変更を実際には記録しない
 ```
 
 CI は dry-run しない。CI で tag を消したい場合は `git tag -d vX.Y.Z && git push --delete origin vX.Y.Z` で巻き戻し可能。
@@ -84,7 +84,7 @@ CI は dry-run しない。CI で tag を消したい場合は `git tag -d vX.Y.
 
 ## 8. Checklist (release 前)
 
-- [ ] `npm run type-check && npm run lint && npm run build && npm run verify` green
+- [ ] `bun run type-check && bun run lint && bun run build && bun run verify` green
 - [ ] release branch の全 PR merged
 - [ ] CI 必須 check 全 green
 - [ ] submodule pointer が最新

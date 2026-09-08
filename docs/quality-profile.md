@@ -11,8 +11,8 @@ compile した結果。固定 bundle ではなく project-specific。
 | compiler | TypeScript | 5.3.2 固定 | ES3 非推奨警告抑制 |
 | bundler | Rollup | 4 | ExtendScript IIFE 制御 |
 | type | `types-for-adobe` | ^7 | After Effects 型 |
-| package manager | npm | (lockfile) | bundler / CI 互換重視 |
-| Skill CLI | bun | latest | `bunx skills` 用 |
+| package manager | Bun | 1.4.2 固定 | 標準、lockfile `bun.lock` 採用 |
+| Skill CLI | bunx (Bun 同梱) | latest | `bunx skills` |
 | linter | ESLint | 8 | `@typescript-eslint` |
 | formatter | Prettier | 3 | standard |
 | git | git | >= 2.30 | submodule recursive |
@@ -45,11 +45,11 @@ compile した結果。固定 bundle ではなく project-specific。
 
 CI (`ci.yml`) は次の順で実行。いずれか失敗でマージ不可。
 
-1. `npm ci`
-2. `npm run type-check`
-3. `npm run lint`
-4. `npm run clean && npm run build`
-5. `npm run verify`
+1. `bun install --frozen-lockfile`
+2. `bun run type-check`
+3. `bun run lint`
+4. `bun run clean && bun run build`
+5. `bun run verify`
 
 ローカルも同じ順 (policy §21: local と CI で同じ deterministic entry point)。
 
