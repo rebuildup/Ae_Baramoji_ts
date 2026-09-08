@@ -7,4 +7,16 @@ dist/
 *.tsbuildinfo
 .env
 .env.local
+
+# project-local Skills (third-party downloaded content).
+# Trust evaluation 後に docs/decisions/ に ADR を残した上で commit する。
+.agents/skills/
+skills-lock.json
+
+# structured recovery checkpoint files (use `git add .checkpoint/` で
+# 必要なものだけ commit する想定)。
+.checkpoint/
+
+# 一時解析用 (policy §29)
+.tmp/
 coverage/
