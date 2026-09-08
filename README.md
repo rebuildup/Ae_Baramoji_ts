@@ -1,66 +1,72 @@
 # Ae_Baramoji_ts
 
-TypeScript source-of-truth for [rebuildup/Ae_Baramoji](https://github.com/rebuildup/Ae_Baramoji).
+After Effects 用 ExtendScript (`.jsx`) 配布物 `Ae_Baramoji` の **TypeScript
+ソースリポジトリ**。7 本の `.jsx` (`Baramoji.jsx` + 6 standalone variants) を
+ビルドし、`Baramoji.zip` にまとめて `rebuildup/Ae_Baramoji` (submodule) へ自動
+同期する。
 
-This repository compiles seven ExtendScript (`.jsx`) files and syncs them to the distribution repository as a git submodule.
+配布リポ: https://github.com/rebuildup/Ae_Baramoji
 
-## What this is
+## 役割
 
-[`rebuildup/Ae_Baramoji`](https://github.com/rebuildup/Ae_Baramoji) is a set of After Effects ExtendScript tools that decompose text layers into character / shape / part variants. Until now, those `.jsx` files were maintained by hand. This repository adds a TypeScript build pipeline on top:
+| リポジトリ | 役割 |
+|---|---|
+| `rebuildup/Ae_Baramoji_ts` (本リポ) | source-of-truth。TypeScript で開発し `.jsx` を生成 |
+| `rebuildup/Ae_Baramoji` | distribution。submodule 経由で自動反映、直接編集禁止 |
 
-- Type-checked source (uses [`types-for-adobe`](https://www.npmjs.com/package/types-for-adobe))
-- Single command to rebuild all seven outputs
-- Submodule-based sync to the distribution repo
-- CI for both PRs and tagged releases
-
-The `.jsx` files in the distribution repo are **generated artifacts** — please open a PR against `Ae_Baramoji_ts` instead of editing them directly.
-
-## Repository layout
-
-```
-.
-├── src/
-│   ├── core/              # shared decomposition logic
-│   ├── entries/           # one entry per output (.tsx.ts → .jsx)
-│   ├── types/             # ExtendScript type shims
-│   └── init.ts            # ES3 polyfills loaded by every entry
-├── scripts/               # build-time helpers (verify, zip, sync)
-├── release/
-│   └── Ae_Baramoji/       # git submodule → distribution repo
-├── rollup.config.mjs      # multi-input Rollup pipeline
-├── tsconfig.json          # ES3 target, noLib, types-for-adobe only
-└── .github/workflows/     # ci.yml (PR/build) and release.yml (tag)
-```
-
-## Build
+## Quick start
 
 ```bash
-npm install
-npm run build      # produces dist/Baramoji.jsx + 6 variants
-npm run verify     # syntax check + ES3 compatibility + IIFE check
+git clone --recurse-submodules https://github.com/rebuildup/Ae_Baramoji_ts.git
+cd Ae_Baramoji_ts
+npm ci
+git submodule update --init --recursive
+
+npm run type-check
+npm run lint
+npm run build
+npm run verify
 ```
 
-## Release
+7 本の `.jsx` が `dist/` に生成される。Build artifact の SHA-256 は release
+notes に記載する。
 
-Releases are driven by git tags on this repo. Pushing a tag like `v0.1.0` triggers `.github/workflows/release.yml`, which builds, syncs the seven `.jsx` files (and `Baramoji.zip`) into the `release/Ae_Baramoji` submodule, and creates a GitHub Release with the zip attached.
-
-To do the same thing locally:
+## 配布
 
 ```bash
-npm run release
+npm run release:zip                    # dist/ → release/Ae_Baramoji/Baramoji.zip
+npm run release:sync -- --dry-run      # submodule への反映を確認
+npm run release                        # clean → build → verify → sync
 ```
 
-This requires write access to both repos and a configured git author.
+CI (`.github/workflows/release.yml`) は `v*` タグ push で自動実行。
+配布 submodule / 親 pointer / GitHub Release は 1 アクションで揃う。
 
-## Development
+## ドキュメント
 
-To add a new decomposition variant:
+| doc | 用途 |
+|---|---|
+| [AGENTS.md](./AGENTS.md) | root agent 向け dispatcher |
+| [docs/architecture.md](./docs/architecture.md) | source/work SoT、build / sync / release の依存方向 |
+| [docs/development.md](./docs/development.md) | bootstrap、scripts、validation entry point |
+| [docs/quality-profile.md](./docs/quality-profile.md) | quality gate, verification level |
+| [docs/release.md](./docs/release.md) | sprint / tag / submodule sync workflow |
+| [docs/security.md](./docs/security.md) | advisory intake、secret 扱い |
+| [docs/recovery.md](./docs/recovery.md) | fresh agent 復旧手順 |
+| [docs/troubleshooting.md](./docs/troubleshooting.md) | 典型障害と切り分け |
+| [docs/decisions/](./docs/decisions/) | ADR |
 
-1. Create `src/entries/<NewName>.tsx.ts` — see the existing entries for the IIFE pattern.
-2. Wire it in `rollup.config.mjs` (input → output mapping).
-3. Re-use `src/core/*` modules; do not duplicate logic.
-4. Run `npm run build && npm run verify`.
+## 開発フロー要約
+
+1. Issue 起票 (`.github/ISSUE_TEMPLATE/{bug,feature,security}.yml`)
+2. ticket branch `<issue-number>` を `main` から切る
+3. `release-x-y-z` へ向けて Draft PR を出す
+4. `npm run type-check && npm run lint && npm run build && npm run verify` を通す
+5. reviewer 別 agent で integration 確認 → Ready → merge
+6. release branch merge → tag push → CI が GitHub Release まで自動化
 
 ## License
 
-MIT — see [LICENSE](./LICENSE). Original `.jsx` implementation copyright 2025 361do_sleep; TypeScript port copyright 2025 rebuildup and contributors.
+MIT — Copyright 2025 361do_sleep
+
+実装方針の詳細は `docs/decisions/0001-typescript-source-of-truth.md` を参照。

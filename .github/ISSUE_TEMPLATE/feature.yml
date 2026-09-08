@@ -1,0 +1,76 @@
+name: Feature
+description: 機能追加 / 改善案
+title: "[feat] "
+labels: ["enhancement"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        機能追加の背景と acceptance criteria を整理してください。
+        design-first が必要な変更 (公開 I/F の変更 / MAJOR version) は
+        Issue よりも前に `docs/decisions/` に ADR を起こしてください。
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 区分
+      options:
+        - 新エントリ追加 (新規 .jsx)
+        - 既存エントリの機能追加
+        - 内部 refactor (Phase 2/3 関連)
+        - ツール / CI / 配布パイプライン
+        - ドキュメント
+      validations:
+        required: true
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: 公開 I/F への影響
+      options:
+        - 影響なし (PATCH)
+        - 既存挙動は維持 + 機能追加 (MINOR)
+        - 公開 I/F の破壊的変更 (MAJOR)
+      validations:
+        required: true
+
+  - type: input
+    id: target-version
+    attributes:
+      label: target version (任意)
+    attributes:
+      placeholder: "例: 0.3.0"
+      validations:
+        required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解決したい問題 / 背景
+      validations:
+        required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: acceptance criteria
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+      validations:
+        required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: scope / non-scope
+      validations:
+        required: false
+
+  - type: textarea
+    id: dependency
+    attributes:
+      label: 依存 / 連携先 (関連 Issue / ADR / docs)
+      validations:
+        required: false

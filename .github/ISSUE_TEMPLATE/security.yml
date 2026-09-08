@@ -1,0 +1,65 @@
+name: Security
+description: セキュリティ関連 (CVE / secret / 不正 push / 配布物混入)
+title: "[security] "
+labels: ["security"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        機密情報の詳細は本文に書かず、最初の連絡は限定共有 (mention のみ) に留めて
+        ください。本リポジトリの security policy は `docs/security.md` を参照。
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 種別
+      options:
+        - dependency advisory (npm)
+        - leak of secret (GH_PAT etc.)
+        - submodule への不正 push
+        - release 成果物への混入
+        - CI / workflow 異常
+        - その他
+      validations:
+        required: true
+
+  - type: input
+    id: cve
+    attributes:
+      label: CVE / Advisory ID (任意)
+      placeholder: "例: CVE-2024-XXXX"
+      validations:
+        required: false
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 影響範囲
+      placeholder: |
+        - 該当 dependency / commit / リリース
+        - 影響を受ける機能
+        - 影響を受けるユーザー
+      validations:
+        required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現条件 / PoC (private で実施、詳細を書かない)
+      validations:
+        required: true
+
+  - type: textarea
+    id: requested
+    attributes:
+      label: 求める対応 (patch / advisory / release)
+      validations:
+        required: true
+
+  - type: textarea
+    id: contact
+    attributes:
+      label: 連絡手段 (任意)
+      validations:
+        required: false

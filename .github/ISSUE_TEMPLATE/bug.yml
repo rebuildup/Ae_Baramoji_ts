@@ -1,0 +1,82 @@
+name: Bug
+description: 不具合の報告 (Ae_Baramoji の ExtendScript 実行時に遭遇した問題)
+title: "[bug] "
+labels: ["bug"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        バグ報告ありがとうございます。再現条件と実際の出力をできるかぎり具体的に
+        書いてください。
+
+  - type: dropdown
+    id: entry
+    attributes:
+      label: 該当エントリ
+      description: 不具合が起きたエントリ
+      options:
+        - Baramoji.jsx (palette)
+        - Baramoji_txt.jsx
+        - Baramoji_txt_win.jsx
+        - Baramoji_shape.jsx
+        - Baramoji_shape_win.jsx
+        - Baramoji_part.jsx
+        - Baramoji_part_win.jsx
+      validations:
+        required: true
+
+  - type: input
+    id: ae-version
+    attributes:
+      label: After Effects version
+      placeholder: "例: 2025 (24.x)"
+      validations:
+        required: true
+
+  - type: input
+    id: build-sha
+    attributes:
+      label: 使用したビルド (commit SHA または tag)
+      placeholder: "例: 0a7d7b2 または v0.2.0"
+      validations:
+        required: false
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+      validations:
+        required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する挙動
+      validations:
+        required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の挙動 (エラーメッセージ等)
+      validations:
+        required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 試した workaround / 回避策
+      validations:
+        required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 補足 (スクリーンショット / 再現ファイル / 関連 Issue)
+      validations:
+        required: false
