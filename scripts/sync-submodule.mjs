@@ -84,15 +84,28 @@ function ensureReadmeNotice() {
 
 function commitAndPushSubmodule(parentSha) {
   const msg = `Sync from Ae_Baramoji_ts @ ${parentSha.slice(0, 7)}`;
+  // The submodule is checked out in detached HEAD at the SHA recorded by the
+  // parent pointer. If the previous release succeeded, the submodule's remote
+  // main may have advanced past that SHA. We must fetch + rebase onto the
+  // current remote main before adding our new commit, otherwise the push will
+  // be a non-fast-forward.
+  if (!dryRun) {
+    run('git', ['-C', SUBMODULE_DIR, 'fetch', 'origin', 'main']);
+    try {
+      run('git', ['-C', SUBMODULE_DIR, 'rebase', 'FETCH_HEAD']);
+    } catch (e) {
+      console.error('sync-submodule: submodule rebase failed; non-fast-forward or conflict');
+      throw e;
+    }
+  }
   run('git', ['-C', SUBMODULE_DIR, 'add', '--', ...FILES, 'README.md', 'Baramoji.zip']);
   if (dryRun) {
     console.log(`sync-submodule: [dry-run] would commit in submodule: ${msg}`);
     return;
   }
   run('git', ['-C', SUBMODULE_DIR, 'commit', '-m', msg]);
-  // Submodule is checked out in detached HEAD inside CI (and may be locally).
   // Push the current HEAD explicitly to the configured upstream branch instead
-  // of relying on the current branch ref, which is undefined here.
+  // of relying on the current branch ref, which is undefined in detached HEAD.
   run('git', ['-C', SUBMODULE_DIR, 'push', 'origin', 'HEAD:main']);
   console.log(`sync-submodule: pushed submodule (${msg})`);
 }
