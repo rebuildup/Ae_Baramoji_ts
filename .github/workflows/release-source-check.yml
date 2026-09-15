@@ -20,12 +20,16 @@ permissions:
   pull-requests: read
 
 jobs:
-  check-release-source:
-    name: validate release-x-y-z head when base=main
-    if: github.event.pull_request.base.ref == 'main'
+  release-source:
+    name: release-source
+    # Single-job workflow so the status-check context emitted to the PR is
+    # exactly `release-source` (matching the ADR-0013 ruleset's required
+    # context). Multi-job workflows emit `<workflow> / <job-key>`, which would
+    # never satisfy the required context.
     runs-on: ubuntu-latest
     steps:
-      - name: Verify head branch matches release-x-y-z
+      - name: Verify head branch when base=main
+        if: github.event.pull_request.base.ref == 'main'
         env:
           HEAD: ${{ github.event.pull_request.head.ref }}
           BASE: ${{ github.event.pull_request.base.ref }}
@@ -50,12 +54,8 @@ jobs:
           echo "(or whose head is renamed to release-<major>-<minor>-<patch>)."
           exit 1
 
-  pass-through:
-    name: skip when base != main
-    if: github.event.pull_request.base.ref != 'main'
-    runs-on: ubuntu-latest
-    steps:
       - name: Skip — not a main-targeting PR
+        if: github.event.pull_request.base.ref != 'main'
         run: |
           echo "OK: base is not 'main'; source-check N/A. Stacked PRs are validated"
           echo "by the integration gate and the eventual release-source re-check"
