@@ -85,6 +85,13 @@ export function runDecomposeTextToTextLayers(opts: DecomposeTextOptions = {}): v
     onProgress?.(4, 'Inspecting layers...');
 
     for (let layerIdx = 0; layerIdx < selLayers.length; layerIdx++) {
+      // Hoisted so the per-source catch can roll back these shape layers
+      // (they're created by app.executeCommand below) and resultLayers
+      // we successfully created via textLayer.duplicate() before a later
+      // step (style / position application) failed. Declared outside the
+      // per-source try so the catch can read them after a throw.
+      let allShapes: Layer[] = [];
+      let resultLayers: Layer[] = [];
       // Wrap each source layer in its own try/catch so a failure on one
       // source (e.g. removeDecompositionArtifacts hitting a locked layer)
       // doesn't abort the entire multi-source pass.
@@ -205,7 +212,7 @@ export function runDecomposeTextToTextLayers(opts: DecomposeTextOptions = {}): v
         const duplicatedShape = (comp.selectedLayers[0] as Layer).duplicate();
         duplicatedShape.selected = true;
       }
-      const allShapes = comp.selectedLayers as Layer[];
+      allShapes = comp.selectedLayers as Layer[];
 
       for (let si = 0; si < allShapes.length; si++) {
         const curShape = allShapes[si];
@@ -257,7 +264,7 @@ export function runDecomposeTextToTextLayers(opts: DecomposeTextOptions = {}): v
         }
       }
 
-      const resultLayers: Layer[] = [];
+      resultLayers = [];
       for (let ci = cleanText.length - 1; ci >= 0; ci--) {
         const characterLayer = textLayer.duplicate();
         characterLayer.enabled = true;
@@ -528,13 +535,25 @@ export function runDecomposeTextToTextLayers(opts: DecomposeTextOptions = {}): v
         }
       }
       } catch (layerError) {
-        // Surface the error to the user but continue with the remaining
-        // selected sources. The outer try/catch will still abort on truly
-        // catastrophic failures (e.g. undo group setup).
-        alert(
-          'Error processing layer: ' +
-            ((layerError as any)?.toString ? (layerError as any).toString() : layerError),
-        );
+        // Roll back any partial artifacts we created for THIS source before
+        // moving on. Existing decompositions removed by `overwrite` mode are
+        // kept (we only undo what THIS run created for the failed source).
+        // `allShapes` and `resultLayers` are hoisted outside this try block
+        // so the catch can read whatever was assigned before the throw.
+        for (let s = 0; s < allShapes.length; s++) {
+          try { allShapes[s].remove(); } catch (e) { void e; }
+        }
+        for (let r = 0; r < resultLayers.length; r++) {
+          try { resultLayers[r].remove(); } catch (e) { void e; }
+        }
+        try {
+          alert(
+            'Error processing layer: ' +
+              ((layerError as any)?.toString ? (layerError as any).toString() : layerError),
+          );
+        } catch (e) {
+          void e;
+        }
       }
     }
 

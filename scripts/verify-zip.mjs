@@ -4,18 +4,14 @@
 //   node scripts/verify-zip.mjs <checksums.txt> [base-dir]
 //
 // The base-dir defaults to the directory that contains checksums.txt itself.
-// If a referenced file is not found under that base-dir:
-//   1. The script tries the cwd and the parent of the checksums directory
-//      (covers in-repo invocations where the manifest records repo-root-
-//      relative paths but the user is at the project root).
-//   2. Then it scans every sibling directory next to checksums.txt and
-//      matches by BASENAME only. This is intentional for the public release
-//      flow: end users download `Baramoji.zip` + `checksums.txt` into the
-//      same folder, and the public manifest records the zip by its
-//      published basename (`Baramoji.zip`). Sub-path directory structure in
-//      manifest entries is preserved as-is when an explicit base-dir is
-//      given; the basename scan is the LAST fallback so it cannot mask a
-//      genuine missing-file error when a structured path is required.
+// If a referenced file is not found under that base-dir, the script tries
+// the cwd and the parent of the checksums directory (covers in-repo
+// invocations where the manifest records repo-root-relative paths but the
+// user is at the project root). If those still don't resolve, the entry is
+// reported as MISSING — the script does NOT fall through to a basename scan
+// of sibling directories, because such a scan could mask a missing-file error
+// by passing verification against an unrelated same-named file in a sibling
+// folder. An explicit base-dir argument lets the caller point at any layout.
 //
 // Exit codes:
 //   0 — all entries matched
@@ -28,8 +24,8 @@
 //       could not be opened.)
 
 import { createHash } from 'node:crypto';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 const args = process.argv.slice(2);
 if (args.length < 1) {
@@ -74,16 +70,6 @@ const altBaseDirs = explicitBaseDir
   ? []
   : [cwd, resolve(checksumsDir, '..')].filter((d) => d !== defaultBaseDir);
 
-// Cache the sibling-directory scan — it's invariant for the lifetime of this
-// invocation, and the internal manifest has multiple entries.
-const siblingDirs = (() => {
-  if (explicitBaseDir) return [];
-  return readdirSync(checksumsDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => join(checksumsDir, d.name))
-    .sort();
-})();
-
 // Memoize existsSync results across the lifetime of this invocation. Each
 // manifest entry repeats the same basename lookups for default + alt +
 // sibling base-dirs; without memoisation we'd touch the filesystem O(N × M)
@@ -101,28 +87,18 @@ function cachedExists(absPath) {
 function resolvePath(relPath) {
   if (isAbsolute(relPath)) return relPath;
   if (relPath === '') return null;
+  // Resolve against the default base-dir (the directory that contains
+  // checksums.txt), then fall back to any additional base-dirs (cwd + parent
+  // of checksumsDir for in-repo usage). If none of those resolve, return the
+  // direct path so the caller's existence check produces a clear MISSING —
+  // never silently fall through to a sibling-dir scan (CodeRabbit #3:
+  // such a scan could pass verification against an unrelated same-named
+  // file in a sibling folder, which is a security smell).
   const direct = join(defaultBaseDir, relPath);
   if (cachedExists(direct)) return direct;
-  // Try additional base-dirs (project root / parent) for in-repo manifests
-  // whose default base-dir is a subdirectory like `dist/`.
   for (const alt of altBaseDirs) {
     const candidate = join(alt, relPath);
     if (cachedExists(candidate)) return candidate;
-  }
-  // Honour explicit override; never silently fall through to a sibling scan.
-  if (explicitBaseDir) return direct;
-  // Scan sibling directories in sorted order for a deterministic result.
-  const base = basename(relPath);
-  const matches = [];
-  for (const dir of siblingDirs) {
-    const candidate = join(dir, base);
-    if (cachedExists(candidate)) matches.push(candidate);
-  }
-  if (matches.length === 1) return matches[0];
-  if (matches.length > 1) {
-    console.error(
-      `verify-zip: ambiguous match for ${relPath}; candidates:\n  ${matches.join('\n  ')}`,
-    );
   }
   return direct;
 }

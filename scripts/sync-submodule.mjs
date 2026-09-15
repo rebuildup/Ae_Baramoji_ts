@@ -184,13 +184,20 @@ async function main() {
   // by `bun run release:zip` before `bun run release:sync`. We do NOT re-run
   // release-zip here: it would invalidate the SHA-256 we just computed for
   // the public checksums.txt if archiver produced a different byte stream.
+  //
+  // The submodule MUST already be at origin/main by the time we get here:
+  // the release workflow (release.yml) runs `git checkout -B main FETCH_HEAD`
+  // BEFORE `bun run release:zip` so the freshly-built Baramoji.zip (a
+  // tracked file in the submodule) isn't clobbered by `origin/main`'s
+  // version on the way to commit. Calling resetSubmoduleToRemoteMain() here
+  // would revert the just-built ZIP and ship an unrelated zip from
+  // origin/main instead.
   const zipPath = join(SUBMODULE_DIR, 'Baramoji.zip');
   if (!existsSync(zipPath)) {
     throw new Error(`${zipPath} is missing; run \`bun run release:zip\` first`);
   }
 
   const sha = parentSha();
-  resetSubmoduleToRemoteMain();
   copyBuiltFiles();
   ensureReadmeNotice();
   commitAndPushSubmodule(sha);

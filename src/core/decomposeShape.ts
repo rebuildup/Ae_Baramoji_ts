@@ -70,6 +70,14 @@ export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}):
     }
 
     for (let layerIdx = 0; layerIdx < selLayers.length; layerIdx++) {
+      // Hoisted so the per-source catch can roll back partial artifacts
+      // (baseShapeLayer is created by CMD_CREATE_TEXT_SHAPE; resultLayers
+      // are created by baseShapeLayer.duplicate() below). textLayer must
+      // also be visible in the catch for the same reason — clear-selection
+      // state and restore it before continuing to the next source.
+      let textLayer: Layer | null = null;
+      let baseShapeLayer: Layer | null = null;
+      let resultLayers: Layer[] = [];
       // Wrap each source layer in its own try/catch so a failure on one
       // source (e.g. removeDecompositionArtifacts hitting a locked layer)
       // doesn't abort the entire multi-source pass.
@@ -81,7 +89,7 @@ export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}):
         'Processing layer ' + (layerIdx + 1) + '/' + selLayers.length + '...',
       );
 
-      const textLayer = selLayers[layerIdx];
+      textLayer = selLayers[layerIdx];
       if (!(textLayer instanceof (globalThis as any).TextLayer)) {
         continue;
       }
@@ -102,26 +110,37 @@ export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}):
       const cleanedForChars = textContent.replace(/\r|\n|/g, '');
       const cleanText = cleanedForChars.replace(/\s+/g, '');
 
+      // Clear selection before selecting this source so a stale selection
+      // from the previous iteration's `resultLayers` doesn't end up as
+      // `comp.selectedLayers[0]` after `CMD_CREATE_TEXT_SHAPE`.
       for (let sdel = 0; sdel < comp.selectedLayers.length; sdel++) {
-        comp.selectedLayers[sdel].selected = false;
+        try {
+          comp.selectedLayers[sdel].selected = false;
+        } catch (e) {
+          void e;
+        }
       }
       textLayer.selected = true;
 
       onProgress?.(20, 'Converting text to shapes...');
       app.executeCommand(CMD_CREATE_TEXT_SHAPE);
 
-      const baseShapeLayer = comp.selectedLayers[0];
-      if (!baseShapeLayer) {
+      if (!comp.selectedLayers[0]) {
         alert(ALERT.FailedShapesFromText + textLayer.name);
         continue;
       }
+      baseShapeLayer = comp.selectedLayers[0];
 
-      const shapeContents = baseShapeLayer.property(ADBE.Contents) as any;
+      // Narrowed for use inside the loop below; the null case was already
+      // handled above. Re-narrow here so TS knows the call sites are
+      // non-null without sprinkling `!` operators throughout.
+      const baseLayer: Layer = baseShapeLayer as Layer;
+
+      const shapeContents = baseLayer.property(ADBE.Contents) as any;
       const totalShapes = shapeContents.numProperties;
 
-      const resultLayers: Layer[] = [];
       for (let i = totalShapes - 1; i >= 0; i--) {
-        const dup = baseShapeLayer.duplicate();
+        const dup = baseLayer.duplicate();
         const dupContents = dup.property(ADBE.Contents) as any;
 
         for (let j = dupContents.numProperties; j > 0; j--) {
@@ -173,7 +192,7 @@ export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}):
         void e;
       }
       try {
-        baseShapeLayer.remove();
+        baseLayer.remove();
       } catch (e) {
         void e;
       }
@@ -192,8 +211,32 @@ export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}):
       );
       } catch (layerError) {
         // Wrap each source in its own try/catch so one bad layer doesn't
-        // abort the whole multi-source pass. The outer catch still handles
-        // unexpected failures that originate outside the per-source loop.
+        // abort the whole multi-source pass. Roll back partial artifacts
+        // we created for THIS source so a failure mid-way doesn't leave a
+        // half-decomposed source next to the original. Existing tagged
+        // decompositions removed by `overwrite` mode are kept — we only
+        // undo what THIS run produced for the failed source.
+        for (let r = 0; r < resultLayers.length; r++) {
+          try {
+            resultLayers[r].remove();
+          } catch (e) {
+            void e;
+          }
+        }
+        if (baseShapeLayer) {
+          try {
+            baseShapeLayer.remove();
+          } catch (e) {
+            void e;
+          }
+        }
+        if (textLayer) {
+          try {
+            textLayer.selected = false;
+          } catch (e) {
+            void e;
+          }
+        }
         try {
           alert(
             'Error processing layer: ' +

@@ -14,7 +14,13 @@ name: release-source
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize]
+    # `edited` is required so the check re-evaluates when the PR is retargeted
+    # to/from `main` (e.g. a stacked release-branch PR later flips its base
+    # to main). Without it, the gate would stay stale against a base change.
+    # Title / body edits do trigger extra runs, but the job body short-
+    # circuits via the base-change predicate below so non-base edits pay only
+    # the runner-startup cost.
+    types: [opened, reopened, synchronize, edited]
 
 permissions:
   pull-requests: read
@@ -35,14 +41,41 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Skip — non-base edit (title/body) on an open PR
+        # PR `edited` activity covers title/body/labels/base changes; we only
+        # care about base retargets. Skip cheaply for the noisy cases so we
+        # don't burn the fork check on every title tweak.
+        if: >
+          github.event.action != 'edited' ||
+          github.event.changes.base == null ||
+          github.event.changes.base.from.ref == github.event.changes.base.ref
+        run: |
+          echo "OK: PR edit was not a base-branch retarget; source-check N/A."
+
       - name: Verify head branch when base=main
         if: github.event.pull_request.base.ref == 'main'
         env:
           HEAD: ${{ github.event.pull_request.head.ref }}
           BASE: ${{ github.event.pull_request.base.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           shopt -s extglob
+          # Refuse to accept a same-named branch coming from a FORK. Without
+          # this check, anyone with a fork named `release-0-2-0` could open a
+          # PR that passes the name check while carrying untrusted code. The
+          # repo must be the same as the target (this repo).
+          if [[ "$HEAD_REPO" != "$REPO" ]]; then
+            SAFE_HEAD="${HEAD//[^[:print:]]/?}"
+            SAFE_BASE="${BASE//[^[:print:]]/?}"
+            SAFE_REPO="${HEAD_REPO//[^[:print:]]/?}"
+            echo "::error::PR head '$SAFE_HEAD' lives in fork '$SAFE_REPO', not this repo."
+            echo "Public repository policy §11 + ADR-0013 only accept release-source heads"
+            echo "that originate from $REPO. Fork PRs must be sent against a feature"
+            echo "branch on this repo (or via the standard fork-then-PR workflow)."
+            exit 1
+          fi
           CANONICAL='^release-[0-9]+-[0-9]+-[0-9]+(-[A-Za-z0-9._-]+)?$'
           # release.yml bumps the parent pointer through a tmp/release-sync/<tag>
           # branch (see `Open and merge parent pointer PR` in release.yml). The

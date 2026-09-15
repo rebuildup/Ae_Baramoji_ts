@@ -43,6 +43,19 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Reset the submodule to origin/main BEFORE building anything that
+      # depends on its working tree. Baramoji.zip is a tracked file in the
+      # submodule; if we let sync-submodule.mjs reset later, it would
+      # clobber the locally-built zip with origin/main's bytes right
+      # before committing. Doing the reset up-front means the build sees a
+      # clean submodule baseline.
+      - name: Reset submodule to origin/main
+        run: |
+          set -euo pipefail
+          git -C release/Ae_Baramoji fetch origin main
+          git -C release/Ae_Baramoji checkout -B main FETCH_HEAD
+          git -C release/Ae_Baramoji status --porcelain | sed 's/^/  submodule: /'
+
       - name: Build
         run: bun run build
 
@@ -104,6 +117,18 @@ jobs:
               --head "$BRANCH" \
               --title "chore(release): bump submodule pointer for ${RELEASE_TAG}" \
               --body "Automated submodule pointer for ${RELEASE_TAG}."
+          fi
+          # Wait for required status checks to finish before merging.
+          # `gh pr merge` runs immediately and races against queued checks;
+          # the repo has auto-merge disabled, so we cannot rely on a
+          # background merge once the required gate turns green. Watching
+          # `--required` until completion (pass or fail) keeps the release
+          # job from succeeding on a half-checked PR. `--fail-fast` aborts
+          # the watch the moment any required check fails so we don't keep
+          # polling a doomed PR.
+          if ! gh pr checks "$BRANCH" --required --watch --fail-fast; then
+            echo "::error::Required checks did not pass for $BRANCH; refusing to merge."
+            exit 1
           fi
           gh pr merge "$BRANCH" --squash --delete-branch --body "Automated release sync for ${RELEASE_TAG}"
 
