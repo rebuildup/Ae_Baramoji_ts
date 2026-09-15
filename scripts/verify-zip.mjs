@@ -4,15 +4,28 @@
 //   node scripts/verify-zip.mjs <checksums.txt> [base-dir]
 //
 // The base-dir defaults to the directory that contains checksums.txt itself.
-// If a referenced file is not found under that base-dir, the same basename is
-// also looked up under any sibling directories next to checksums.txt, so
-// users who downloaded `Baramoji.zip` + `checksums.txt` into the same folder
-// can verify without specifying a base-dir.
+// If a referenced file is not found under that base-dir:
+//   1. The script tries the cwd and the parent of the checksums directory
+//      (covers in-repo invocations where the manifest records repo-root-
+//      relative paths but the user is at the project root).
+//   2. Then it scans every sibling directory next to checksums.txt and
+//      matches by BASENAME only. This is intentional for the public release
+//      flow: end users download `Baramoji.zip` + `checksums.txt` into the
+//      same folder, and the public manifest records the zip by its
+//      published basename (`Baramoji.zip`). Sub-path directory structure in
+//      manifest entries is preserved as-is when an explicit base-dir is
+//      given; the basename scan is the LAST fallback so it cannot mask a
+//      genuine missing-file error when a structured path is required.
 //
 // Exit codes:
 //   0 — all entries matched
-//   1 — verification failure: mismatch, missing file, malformed line, or empty manifest
-//   2 — usage error or manifest itself missing/unreadable
+//   1 — verification failure: mismatch, missing file, malformed line, or
+//       empty manifest
+//   2 — usage error or the manifest file itself is missing / unreadable
+//       (Note: this is intentional. A missing referenced file is a
+//       verification failure — exit 1 — not a usage error. Exit 2 means
+//       the user invoked the script incorrectly or the manifest itself
+//       could not be opened.)
 
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -71,16 +84,30 @@ const siblingDirs = (() => {
     .sort();
 })();
 
+// Memoize existsSync results across the lifetime of this invocation. Each
+// manifest entry repeats the same basename lookups for default + alt +
+// sibling base-dirs; without memoisation we'd touch the filesystem O(N × M)
+// times where N is the entry count and M is the base-dir count. The cache
+// is invalidated when the script exits — entries that don't exist stay
+// absent for the duration of the run.
+const existsCache = new Map();
+function cachedExists(absPath) {
+  if (!existsCache.has(absPath)) {
+    existsCache.set(absPath, existsSync(absPath));
+  }
+  return existsCache.get(absPath);
+}
+
 function resolvePath(relPath) {
   if (isAbsolute(relPath)) return relPath;
   if (relPath === '') return null;
   const direct = join(defaultBaseDir, relPath);
-  if (existsSync(direct)) return direct;
+  if (cachedExists(direct)) return direct;
   // Try additional base-dirs (project root / parent) for in-repo manifests
   // whose default base-dir is a subdirectory like `dist/`.
   for (const alt of altBaseDirs) {
     const candidate = join(alt, relPath);
-    if (existsSync(candidate)) return candidate;
+    if (cachedExists(candidate)) return candidate;
   }
   // Honour explicit override; never silently fall through to a sibling scan.
   if (explicitBaseDir) return direct;
@@ -89,7 +116,7 @@ function resolvePath(relPath) {
   const matches = [];
   for (const dir of siblingDirs) {
     const candidate = join(dir, base);
-    if (existsSync(candidate)) matches.push(candidate);
+    if (cachedExists(candidate)) matches.push(candidate);
   }
   if (matches.length === 1) return matches[0];
   if (matches.length > 1) {

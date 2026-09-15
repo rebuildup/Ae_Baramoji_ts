@@ -65,7 +65,13 @@ function parseArgs(argv) {
       `unexpected extra arguments: ${positional.slice(1).join(' ')} (expected at most one output path)`,
     );
   }
-  return { internal, outPath: positional[0] };
+  // When --internal is set, the positional path (if any) names the INTERNAL
+  // manifest (the one a user explicitly asked for). Without --internal the
+  // positional names the PUBLIC manifest. This avoids the asymmetry where
+  // `checksums.mjs --internal custom.txt` silently writes the public manifest
+  // to custom.txt while pinning the internal one to dist/checksums-internal.txt.
+  const target = internal ? 'internal' : 'public';
+  return { internal, outPath: positional[0], target };
 }
 
 function hashFile(absPath) {
@@ -101,31 +107,42 @@ function main() {
     console.error(`checksums: ${e.message}`);
     process.exit(2);
   }
-  const outPath = args.outPath || join(DIST, 'checksums.txt');
+  // Resolve the default target paths and apply the optional override to
+  // whichever manifest the user explicitly asked for.
+  const publicOutPath = join(DIST, 'checksums.txt');
   const internalOutPath = join(DIST, 'checksums-internal.txt');
+  const targets = {
+    public: publicOutPath,
+    internal: internalOutPath,
+  };
+  if (args.outPath) targets[args.target] = resolve(args.outPath);
 
   if (!existsSync(DIST)) {
     console.error(`checksums: ${DIST} does not exist; run \`bun run build\` first`);
     process.exit(1);
   }
 
+  // Hash every entry once and cache by absolute path. The public manifest
+  // records Baramoji.zip by basename; the internal manifest records it by
+  // its repo-root-relative path. Both reference the SAME file, so we must
+  // not re-read + re-hash it just to compute two different `rel` columns.
+  const hashes = new Map();
+  function hashEntry(entry) {
+    if (!hashes.has(entry.abs)) {
+      ensureFile(entry.abs);
+      hashes.set(entry.abs, hashFile(entry.abs));
+    }
+    return { rel: entry.rel, hash: hashes.get(entry.abs) };
+  }
+
   // Public manifest: only the published Baramoji.zip, recorded by basename.
-  ensureFile(PUBLIC_ZIP.abs);
-  writeManifest(
-    outPath,
-    [{ rel: PUBLIC_ZIP.rel, hash: hashFile(PUBLIC_ZIP.abs) }],
-    'public',
-  );
+  writeManifest(targets.public, [hashEntry(PUBLIC_ZIP)], 'public');
 
   if (args.internal) {
     // Internal manifest: every .jsx build artifact + the ZIP, paths relative
     // to project root so `sha256sum -c` works from the repo root.
-    const internalEntries = [];
-    for (const entry of [...INTERNAL_FILES, INTERNAL_ZIP]) {
-      ensureFile(entry.abs);
-      internalEntries.push({ rel: entry.rel, hash: hashFile(entry.abs) });
-    }
-    writeManifest(internalOutPath, internalEntries, 'internal');
+    const internalEntries = [...INTERNAL_FILES, INTERNAL_ZIP].map(hashEntry);
+    writeManifest(targets.internal, internalEntries, 'internal');
   }
 }
 

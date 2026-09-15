@@ -14,10 +14,16 @@ name: release-source
 
 on:
   pull_request:
-    types: [opened, edited, reopened, synchronize]
+    types: [opened, reopened, synchronize]
 
 permissions:
   pull-requests: read
+
+# Cancel in-flight runs for the same PR — saves runner minutes on rapid
+# rebases and avoids a stale-status window.
+concurrency:
+  group: release-source-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   release-source:
@@ -27,6 +33,7 @@ jobs:
     # context). Multi-job workflows emit `<workflow> / <job-key>`, which would
     # never satisfy the required context.
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Verify head branch when base=main
         if: github.event.pull_request.base.ref == 'main'
@@ -35,19 +42,29 @@ jobs:
           BASE: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
+          shopt -s extglob
           CANONICAL='^release-[0-9]+-[0-9]+-[0-9]+(-[A-Za-z0-9._-]+)?$'
           # release.yml bumps the parent pointer through a tmp/release-sync/<tag>
           # branch (see `Open and merge parent pointer PR` in release.yml). The
           # branch is auto-generated, lives in the same repo, and never sees
           # outside contributions; treat it as a release-source head so the
           # post-tag submodule bump PR can land without bypassing this check.
-          POINTER='^tmp/release-sync/v[0-9]+[0-9A-Za-z._-]*$'
+          # Mirror release.yml's tag construction (semver-ish: vMAJOR.MINOR.PATCH
+          # with optional pre-release suffix) — refusing to match malformed tags
+          # keeps the check tight against accidental name drift.
+          POINTER='^tmp/release-sync/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._-]+)?$'
           if [[ "$HEAD" =~ $CANONICAL ]] || [[ "$HEAD" =~ $POINTER ]]; then
-            echo "OK: head '$HEAD' matches a release-source pattern (base=$BASE)"
+            echo "OK: head '${HEAD//[^[:print:]]/?}' matches a release-source pattern (base=$BASE)"
             exit 0
           fi
-          echo "::error::PR targets '$BASE' but head '$HEAD' does not match '$CANONICAL' or '$POINTER'."
-          echo "Public repository policy §11 + ADR-0013 require direct edits to '$BASE'"
+          # Sanitise HEAD before echoing — GitHub branch names cannot contain
+          # shell metacharacters at create time, but the policy workflow must
+          # not become a vector for them. Strip to printable ASCII before any
+          # interpolation.
+          SAFE_HEAD="${HEAD//[^[:print:]]/?}"
+          SAFE_BASE="${BASE//[^[:print:]]/?}"
+          echo "::error::PR targets '$SAFE_BASE' but head '$SAFE_HEAD' does not match the release-source pattern."
+          echo "Public repository policy §11 + ADR-0013 require direct edits to '$SAFE_BASE'"
           echo "to flow only through a 'release-<major>-<minor>-<patch>' integration branch"
           echo "or the automated tmp/release-sync/v<tag> parent-pointer branch."
           echo "Close this PR and open a new one whose base is the active release branch"
