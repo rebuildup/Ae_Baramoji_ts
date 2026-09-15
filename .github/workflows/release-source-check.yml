@@ -1,12 +1,16 @@
 # Validates that PRs targeting `main` come from a `release-<major>-<minor>-<patch>`
-# branch (policy §11 / ADR-0013). For non-`main` PRs (ticket branches stacked on
-# a release branch), the check exits successfully without comment — stacked PR
-# inspection belongs to the integration gate, not the source check.
+# branch (policy §11 / ADR-0013), or from the auto-generated
+# `tmp/release-sync/v<tag>` parent-pointer branch that release.yml uses to
+# bump the submodule pointer after a tag push. For non-`main` PRs (ticket
+# branches stacked on a release branch), the check exits successfully
+# without comment — stacked PR inspection belongs to the integration gate,
+# not the source check.
 #
-# Status check name emitted: `release-source`
+# Status check name emitted: `release-source` (matches the ADR-0013
+# ruleset required context).
 # Required check semantics: see `Protect main` ruleset + ADR-0013.
 
-name: release-source-check
+name: release-source
 
 on:
   pull_request:
@@ -27,14 +31,21 @@ jobs:
           BASE: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
-          PATTERN='^release-[0-9]+-[0-9]+-[0-9]+(-[A-Za-z0-9._-]+)?$'
-          if [[ "$HEAD" =~ $PATTERN ]]; then
-            echo "OK: head '$HEAD' matches release-x-y-z pattern (base=$BASE)"
+          CANONICAL='^release-[0-9]+-[0-9]+-[0-9]+(-[A-Za-z0-9._-]+)?$'
+          # release.yml bumps the parent pointer through a tmp/release-sync/<tag>
+          # branch (see `Open and merge parent pointer PR` in release.yml). The
+          # branch is auto-generated, lives in the same repo, and never sees
+          # outside contributions; treat it as a release-source head so the
+          # post-tag submodule bump PR can land without bypassing this check.
+          POINTER='^tmp/release-sync/v[0-9]+[0-9A-Za-z._-]*$'
+          if [[ "$HEAD" =~ $CANONICAL ]] || [[ "$HEAD" =~ $POINTER ]]; then
+            echo "OK: head '$HEAD' matches a release-source pattern (base=$BASE)"
             exit 0
           fi
-          echo "::error::PR targets '$BASE' but head '$HEAD' does not match '$PATTERN'."
+          echo "::error::PR targets '$BASE' but head '$HEAD' does not match '$CANONICAL' or '$POINTER'."
           echo "Public repository policy §11 + ADR-0013 require direct edits to '$BASE'"
-          echo "to flow only through a 'release-<major>-<minor>-<patch>' integration branch."
+          echo "to flow only through a 'release-<major>-<minor>-<patch>' integration branch"
+          echo "or the automated tmp/release-sync/v<tag> parent-pointer branch."
           echo "Close this PR and open a new one whose base is the active release branch"
           echo "(or whose head is renamed to release-<major>-<minor>-<patch>)."
           exit 1
