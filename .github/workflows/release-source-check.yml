@@ -7,8 +7,8 @@
 # not the source check.
 #
 # Status check name emitted: `release-source` (matches the ADR-0013
-# ruleset required context).
-# Required check semantics: see `Protect main` ruleset + ADR-0013.
+# ruleset required context). Required check semantics: see `Protect main`
+# ruleset + ADR-0013.
 #
 # Trigger: `pull_request_target` (NOT `pull_request`). The `pull_request`
 # event runs the workflow from the PR's HEAD commit, which means a fork
@@ -18,6 +18,17 @@
 # code, so the elevated secret/token context that `pull_request_target`
 # provides is unused — the job only reads `github.event.pull_request.*`
 # metadata.
+#
+# Status reporting: `pull_request_target` makes GITHUB_SHA / GITHUB_REF
+# point at the BASE branch, so the auto-generated CheckRun status is
+# associated with the BASE commit, not the PR head. The ADR-0013 ruleset
+# requires `release-source` on the PR head SHA (where merge gating looks),
+# so the auto CheckRun would never satisfy it. We POST a commit status
+# (Statuses API) to `github.event.pull_request.head.sha` with context
+# `release-source` so the ruleset sees the right context at the right
+# SHA. The job is renamed `release-source-evaluator` so the auto
+# CheckRun context (`release-source / release-source-evaluator`) is
+# clearly NOT what the ruleset requires — only our explicit POST does.
 
 name: release-source
 
@@ -33,6 +44,9 @@ on:
 
 permissions:
   pull-requests: read
+  # Required so we can POST a commit status to the PR head SHA. Without
+  # this permission the gh api call below returns 403.
+  statuses: write
 
 # Cancel in-flight runs for the same PR — saves runner minutes on rapid
 # rebases and avoids a stale-status window.
@@ -41,12 +55,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  release-source:
-    name: release-source
-    # Single-job workflow so the status-check context emitted to the PR is
-    # exactly `release-source` (matching the ADR-0013 ruleset's required
-    # context). Multi-job workflows emit `<workflow> / <job-key>`, which would
-    # never satisfy the required context.
+  release-source-evaluator:
+    name: release-source-evaluator
+    # NOT the ruleset context — the ruleset requires `release-source`,
+    # which the final step POSTs explicitly to the PR head SHA via the
+    # Statuses API. This auto-generated CheckRun context is only useful
+    # for surfacing the workflow run link from the PR's checks list.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -119,3 +133,33 @@ jobs:
           echo "OK: base is not 'main'; source-check N/A. Stacked PRs are validated"
           echo "by the integration gate and the eventual release-source re-check"
           echo "on the release → main PR."
+
+      - name: Report release-source status to PR head SHA
+        # Always run so the ruleset sees a fresh status regardless of
+        # whether the validator steps above succeeded or failed. Without
+        # `if: always()` a failure would leave no status, which the
+        # ruleset treats as "expected / pending" — keeping merge blocked
+        # without surfacing the reason.
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Map job.status (which reflects all earlier steps' outcome)
+          # onto the Statuses API state. Cancelled / timed_out also map
+          # to failure so the ruleset treats them as blocking.
+          case "${{ job.status }}" in
+            success) STATE=success ;;
+            *)       STATE=failure ;;
+          esac
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/statuses/${HEAD_SHA}" \
+            -f "state=${STATE}" \
+            -f "context=release-source" \
+            -f "target_url=${RUN_URL}" \
+            -f "description=release-source policy check (job status: ${{ job.status }})"
+          echo "Posted release-source status=${STATE} to ${HEAD_SHA}"

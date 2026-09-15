@@ -53,6 +53,32 @@ opened / edited / reopened / synchronize で起動する:
 
 status check 名は `release-source` で固定。
 
+### 1.5 `release-source` status は PR head SHA に書き込む
+
+`pull_request_target` event では `GITHUB_SHA` / `GITHUB_REF` が BASE branch を
+指すため、job が自動生成する CheckRun status も BASE commit SHA に紐付く
+([GitHub Docs][1])。一方、ADR §2 の ruleset は PR head SHA 上の status を
+要求するため ([GitHub Docs][2])、auto CheckRun だけでは merge gate を
+満たせず "Expected / Waiting for status" 状態になる。
+
+そこで本 workflow は:
+
+- 評価 job を `release-source-evaluator` に rename し、auto-generated
+  CheckRun context (`release-source / release-source-evaluator`) を
+  ruleset の required context と区別する
+- 評価 step が完了 (success / failure / cancelled / timed_out) した後、
+  `gh api POST /repos/{owner}/{repo}/statuses/{head_sha}` で **Statuses
+  API** を使い、`context=release-source`, `state=<job status>` を
+  PR head SHA に直接書き込む
+- 評価 step が `if: always()` で発火するため、failure 時も status が
+  "failure" で記録され、ruleset 側がブロック理由を surface できる
+
+permissions には `statuses: write` を追加する。`pull-requests: read` は
+metadata 参照に従来通り必要。
+
+[1]: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+[2]: https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks
+
 ### 2. ruleset に required_status_checks を追加する
 
 `Protect main` ruleset (id: 22558519) に次の rule を追加する:
