@@ -52,11 +52,12 @@ CI (`.github/workflows/release.yml`) は `v*` タグ push で自動実行。
 | [docs/architecture.md](./docs/architecture.md) | source/work SoT、build / sync / release の依存方向 |
 | [docs/development.md](./docs/development.md) | bootstrap、scripts、validation entry point |
 | [docs/quality-profile.md](./docs/quality-profile.md) | quality gate, verification level |
-| [docs/release.md](./docs/release.md) | sprint / tag / submodule sync workflow |
+| [docs/release.md](./docs/release.md) | sprint / Draft PR 契約 / release gate |
 | [docs/security.md](./docs/security.md) | advisory intake、secret 扱い |
 | [docs/recovery.md](./docs/recovery.md) | fresh agent 復旧手順 |
 | [docs/troubleshooting.md](./docs/troubleshooting.md) | 典型障害と切り分け |
-| [docs/decisions/](./docs/decisions/) | ADR |
+| [docs/onboarding.md](./docs/onboarding.md) | fresh contributor / agent の最短経路 |
+| [docs/decisions/](./docs/decisions/) | ADR (0012 / 0013 を特に参照) |
 
 ## 開発フロー要約
 

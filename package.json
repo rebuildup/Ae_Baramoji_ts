@@ -18,8 +18,9 @@
     "verify:zip": "node scripts/verify-zip.mjs",
     "release:checksums": "node scripts/checksums.mjs",
     "release:zip": "node scripts/release-zip.mjs",
+    "release:prep": "git -C release/Ae_Baramoji fetch origin main && git -C release/Ae_Baramoji checkout -B main FETCH_HEAD",
     "release:sync": "node scripts/sync-submodule.mjs",
-    "release": "bun run clean && bun run build && bun run verify && bun run release:checksums && bun run release:sync"
+    "release": "bun run clean && bun run build && bun run verify && bun run release:prep && bun run release:zip && bun run release:checksums && bun run verify:zip dist/checksums.txt release/Ae_Baramoji && bun run release:sync"
   },
   "dependencies": {
     "types-for-adobe": "^7.0.12"

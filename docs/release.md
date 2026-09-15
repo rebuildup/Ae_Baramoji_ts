@@ -37,10 +37,15 @@ semver:
 
 1. checkout (submodules: recursive, token: GH_PAT)
 2. `bun install --frozen-lockfile`
-3. `bun run clean && bun run build && bun run verify`
-4. `bun run release:sync` (配布 submodule へ push)
-5. 親リポ側で submodule pointer bump を commit
-6. GitHub Release 作成 + `Baramoji.zip` 添付
+3. submodule を `origin/main` に reset (`git -C release/Ae_Baramoji fetch && checkout -B main FETCH_HEAD`) — `Baramoji.zip` が tracked なので、ZIP ビルド前に行う
+4. `bun run clean && bun run build && bun run verify`
+5. `bun run release:zip` (ローカル ZIP ビルド)
+6. `bun run release:checksums` (公開 manifest 生成)
+7. `bun run verify:zip dist/checksums.txt release/Ae_Baramoji` (公開 manifest でローカル ZIP を検証)
+8. `bun run release:sync` (配布 submodule へ push)
+9. 親リポ側で submodule pointer bump を commit (tmp/release-sync branch)
+10. pointer PR の `release-source` 必須 check 通過を待ってから merge
+11. GitHub Release 作成 + `Baramoji.zip` 添付
 
 GH_PAT は両リポへの write を持つ PAT。`secrets.GH_PAT`。
 
@@ -58,6 +63,55 @@ ticket → release → main の順に verification level を上げる (policy §
 - build artifact → build + smoke + ES3 / IIFE check
 - UI / ScriptUI → unit + integration + smoke
 - release → integration + E2E (manual AE) + release check
+
+## 4.5 Draft PR 契約 (release / ticket)
+
+ticket branch と release branch の双方に次の lifecycle を適用する
+(policy §12 / ADR-0012 / ADR-0013):
+
+### ticket branch (`<issue-number>`)
+
+1. branch 作成直後に first meaningful commit を必ず作る。
+2. canonical remote へ publish し、remote head SHA が first meaningful commit
+   と一致することを確認する。
+3. 確認後すぐ Draft PR を作成し、base を依存先 (active release branch or
+   直前 predecessor ticket branch) に向けて出す。
+4. Draft → Ready の切替条件:
+   - 担当チケットの acceptance criteria 実装済み
+   - current head SHA で integration gate (CI の `type-check, lint, build`)
+     が green
+   - linked Issue / assignee / reviewer-候補 / repository labels /
+     target release / stack context が PR description と一致
+5. Ready にした後の大きな変更 (SHA を進める push) は stale な review を
+   起こし得る。`dismiss_stale_reviews_on_push` は現状 false (ADR-0013)。
+
+### release branch (`release-x-y-z`)
+
+1. main から切り出した直後の **zero-diff 状態** では Draft release PR を
+   出さない (policy §12 例外)。最初の meaningful integrated difference
+   (CI が release-merge を要求する最初の commit) を入れてから **必ず
+   Draft release PR を作成する**。
+2. Draft → Ready の切替条件:
+   - 当該 sprint の全 ticket PR が取り込まれている (dependent stacked
+     ticket は landing まで待つ)
+   - integration gate 全段 green (CI required status checks)
+   - `release-source` check green (ADR-0013) — head が `release-x-y-z`
+     パターンに一致
+   - PR description に included Issues / PRs / breaking changes /
+     migration notes / validation SHA / known limitations が揃う
+3. Ready 状態に達した時点で ADR-0012 境界を適用する。Coordinator /
+   agent はここで **STOP** し user に ready-to-merge を report する。
+   merge そのものは user の明示 authorization で行う。
+
+### 境界まとめ
+
+| 操作 | 実行権者 |
+|---|---|
+| branch 作成 / commit / push | agent + worker |
+| Draft PR 作成 / Draft → Ready | agent + worker + reviewer approval |
+| `release-x-y-z -> main` PR merge | **user のみ (ADR-0012)** |
+| `v<x>.<y>.<z>` tag push | **user のみ (ADR-0012)** |
+| ruleset / branch protection mutation | **user のみ (ADR-0013 / ADR-0012)** |
 
 ## 5. Dry run
 
@@ -93,9 +147,21 @@ CI は dry-run しない。CI で tag を消したい場合は `git tag -d vX.Y.
 
 release 配布物の SHA-256 検証:
 
+dist/checksums.txt は公開 asset のみを記録する（`Baramoji.zip` を basename で）。
+ダウンロードした `Baramoji.zip` と `checksums.txt` を同じ directory に置いた場合:
+
 ```bash
-# リポ root で
-bun run verify:zip dist/checksums.txt
+# download dir で
+sha256sum -c checksums.txt
+# または (CI / in-repo 用)
+node scripts/verify-zip.mjs checksums.txt
+```
+
+dist/checksums-internal.txt は内部 build artifact 全てを記録する
+(`bun run release:checksums -- --internal` で生成)。リポ root からのみ:
+
+```bash
+bun run verify:zip dist/checksums-internal.txt
 # または
-sha256sum -c dist/checksums.txt
+sha256sum -c dist/checksums-internal.txt
 ```

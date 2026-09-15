@@ -14,7 +14,11 @@
 import { ADBE, ALERT, CMD_CREATE_TEXT_SHAPE, UNDO, type DuplicateMode } from './constants';
 import { captureBasicProperties, applyBasicProperties, type LayerProperties } from './properties';
 import { adjustAnchorPoint } from './anchor';
-import { hasDecompositionArtifacts, removeDecompositionArtifacts } from './duplicate';
+import {
+  hasDecompositionArtifacts,
+  removeDecompositionArtifacts,
+  tagArtifact,
+} from './duplicate';
 
 export interface DecomposePartsOptions {
   onProgress?: (progress: number, message: string) => void;
@@ -58,8 +62,17 @@ export function runDecomposeTextToShapeParts(opts: DecomposePartsOptions = {}): 
     }
 
     try {
-      const textLayerIndices: number[] = [];
-      const layerProperties: LayerProperties[] = [];
+      // Hold onto the actual Layer references paired with their captured
+      // LayerProperties. removeDecompositionArtifacts can shift sibling layer
+      // numbering, so re-resolving by index later may return a different
+      // layer or `undefined`. Storing both together as a single entry keeps
+      // the layer and its properties aligned through the sort and the per-
+      // source processing loop (CodeRabbit review on decomposeParts.ts).
+      interface SourceEntry {
+        layer: Layer;
+        props: LayerProperties;
+      }
+      const sourceEntries: SourceEntry[] = [];
 
       for (let i = 0; i < selectedLayers.length; i++) {
         const layer = selectedLayers[i];
@@ -75,96 +88,166 @@ export function runDecomposeTextToShapeParts(opts: DecomposePartsOptions = {}): 
         }
 
         if (isTextLayer || (isShapeLayer && hasVectorGroup)) {
-          textLayerIndices.push(layer.index);
-          layerProperties.push(captureBasicProperties(layer));
+          sourceEntries.push({ layer, props: captureBasicProperties(layer) });
         }
 
         layer.selected = false;
       }
 
-      textLayerIndices.sort((a, b) => a - b);
+      // Process in stacking order (top to bottom) — same as the previous index sort.
+      sourceEntries.sort((a, b) => a.layer.index - b.layer.index);
 
-      if (textLayerIndices.length === 0) {
+      if (sourceEntries.length === 0) {
         alert(ALERT.NoValidForParts);
         app.endUndoGroup();
         return;
       }
 
-      const totalSteps = Math.max(1, textLayerIndices.length);
-      for (let i = 0; i < textLayerIndices.length; i++) {
-        const layerIndex = textLayerIndices[i];
-        const originalProps = layerProperties[i];
+      const totalSteps = Math.max(1, sourceEntries.length);
+      for (let i = 0; i < sourceEntries.length; i++) {
+        const currentLayer = sourceEntries[i].layer;
+        const originalProps = sourceEntries[i].props;
 
-        onProgress?.(
-          Math.round((i / totalSteps) * 80),
-          'Processing layer ' + (i + 1) + '/' + totalSteps + '...',
-        );
+        // Wrap each source in its own try/catch so a failure on one source
+        // (e.g. removeDecompositionArtifacts hitting a locked layer, or an
+        // exception inside processPartsDecompose) doesn't abort the entire
+        // multi-source pass. Track every artifact we create so we can roll
+        // them back if anything throws partway through.
+        let baseShapeLayer: Layer | null = null;
+        let baseIsNew = false;
+        let resultLayers: Layer[] = [];
+        try {
+          onProgress?.(
+            Math.round((i / totalSteps) * 80),
+            'Processing layer ' + (i + 1) + '/' + totalSteps + '...',
+          );
 
-        const currentLayer = comp.layers[layerIndex] as Layer;
-        currentLayer.selected = true;
+          // Clear all selection BEFORE selecting this source so a stale
+          // selection from the previous iteration's `resultLayers`
+          // doesn't end up as `comp.selectedLayers[0]` after
+          // `CMD_CREATE_TEXT_SHAPE`. Without this, multi-source Parts
+          // decomposition can target a leftover result layer instead of
+          // the freshly-created shape group.
+          for (let sdel = 0; sdel < comp.selectedLayers.length; sdel++) {
+            try {
+              comp.selectedLayers[sdel].selected = false;
+            } catch (e) {
+              void e;
+            }
+          }
+          currentLayer.selected = true;
 
-        if (duplicateMode === 'skip' && hasDecompositionArtifacts(comp, currentLayer, 'parts')) {
-          onProgress?.(Math.round((i / totalSteps) * 80), 'Skipping already-decomposed layer: ' + currentLayer.name);
-          currentLayer.selected = false;
-          continue;
-        }
-        if (duplicateMode === 'overwrite') {
-          const removed = removeDecompositionArtifacts(comp, currentLayer, 'parts');
-          if (removed > 0) onProgress?.(Math.round((i / totalSteps) * 80), 'Removed ' + removed + ' stale layer(s) for: ' + currentLayer.name);
-        }
-
-        let baseShapeLayer: Layer;
-        if (currentLayer instanceof (globalThis as any).TextLayer) {
-          app.executeCommand(CMD_CREATE_TEXT_SHAPE);
-          baseShapeLayer =
-            comp.selectedLayers && comp.selectedLayers.length > 0
-              ? comp.selectedLayers[0]
-              : (null as any);
-          if (!baseShapeLayer) {
-            alert(ALERT.FailedShapesFromTextA);
+          if (duplicateMode === 'skip' && hasDecompositionArtifacts(comp, currentLayer, 'parts')) {
+            onProgress?.(Math.round((i / totalSteps) * 80), 'Skipping already-decomposed layer: ' + currentLayer.name);
             currentLayer.selected = false;
             continue;
           }
-        } else {
-          try {
-            if (!currentLayer.property(ADBE.RootVectorsGroup)) {
-              alert(ALERT.FailedShapesNoVector + currentLayer.name);
+          if (duplicateMode === 'overwrite') {
+            const removed = removeDecompositionArtifacts(comp, currentLayer, 'parts');
+            if (removed > 0) onProgress?.(Math.round((i / totalSteps) * 80), 'Removed ' + removed + ' stale layer(s) for: ' + currentLayer.name);
+          }
+
+          if (currentLayer instanceof (globalThis as any).TextLayer) {
+            app.executeCommand(CMD_CREATE_TEXT_SHAPE);
+            const created =
+              comp.selectedLayers && comp.selectedLayers.length > 0
+                ? comp.selectedLayers[0]
+                : (null as any);
+            if (!created) {
+              alert(ALERT.FailedShapesFromTextA);
               currentLayer.selected = false;
               continue;
             }
-            baseShapeLayer = currentLayer;
-          } catch (e) {
-            alert('Error processing shape layer: ' + (e as Error).toString());
-            currentLayer.selected = false;
-            continue;
+            baseShapeLayer = created;
+            baseIsNew = true;
+          } else {
+            try {
+              if (!currentLayer.property(ADBE.RootVectorsGroup)) {
+                alert(ALERT.FailedShapesNoVector + currentLayer.name);
+                currentLayer.selected = false;
+                continue;
+              }
+              baseShapeLayer = currentLayer;
+              baseIsNew = false;
+            } catch (e) {
+              alert('Error processing shape layer: ' + (e as Error).toString());
+              currentLayer.selected = false;
+              continue;
+            }
           }
-        }
 
-        let shapeLabel: number | undefined = undefined;
-        try {
-          shapeLabel = (baseShapeLayer as any).label;
-        } catch (e) {
-          void e;
-        }
-
-        processPartsMerge(baseShapeLayer);
-
-        const keepOriginal = currentLayer.constructor.name === 'ShapeLayer';
-        const resultLayers = processPartsDecompose(
-          baseShapeLayer,
-          originalProps,
-          shapeLabel,
-          keepOriginal,
-        );
-
-        if (resultLayers && resultLayers.length > 0) {
+          let shapeLabel: number | undefined = undefined;
           try {
-            for (let s = 0; s < comp.selectedLayers.length; s++) {
-              comp.selectedLayers[s].selected = false;
-            }
+            shapeLabel = (baseShapeLayer as any).label;
+          } catch (e) {
+            void e;
+          }
+
+          // processPartsMerge / processPartsDecompose expect a non-null
+          // Layer. The branches above either assign baseShapeLayer or
+          // `continue` out of this iteration, so it cannot be null here;
+          // narrow with a cast to satisfy TS without a runtime check.
+          const baseForProcess: Layer = baseShapeLayer as Layer;
+
+          processPartsMerge(baseForProcess);
+
+          const keepOriginal = currentLayer.constructor.name === 'ShapeLayer';
+          resultLayers = processPartsDecompose(
+            baseForProcess,
+            originalProps,
+            shapeLabel,
+            keepOriginal,
+          );
+
+          if (resultLayers && resultLayers.length > 0) {
+            // Tag each new artifact so a later overwrite pass can match it back
+            // to THIS source layer (and not to user-created siblings that share
+            // a name, e.g. "X Outline ").
             for (let r = 0; r < resultLayers.length; r++) {
-              resultLayers[r].selected = true;
+              tagArtifact(resultLayers[r], currentLayer, 'parts');
             }
+            try {
+              for (let s = 0; s < comp.selectedLayers.length; s++) {
+                comp.selectedLayers[s].selected = false;
+              }
+              for (let r = 0; r < resultLayers.length; r++) {
+                resultLayers[r].selected = true;
+              }
+            } catch (e) {
+              void e;
+            }
+          }
+        } catch (layerError) {
+          // Roll back any partial artifacts we created for THIS source before
+          // moving on. Existing tags on the source's prior decomposition (if
+          // overwrite mode succeeded) are kept — only newly created layers
+          // from this run are removed.
+          for (let r = 0; r < resultLayers.length; r++) {
+            try {
+              resultLayers[r].remove();
+            } catch (e) {
+              void e;
+            }
+          }
+          if (baseIsNew && baseShapeLayer) {
+            try {
+              baseShapeLayer.remove();
+            } catch (e) {
+              void e;
+            }
+          }
+          try {
+            currentLayer.selected = false;
+          } catch (e) {
+            void e;
+          }
+          try {
+            alert(
+              'Error processing layer: ' +
+                ((layerError as any)?.toString
+                  ? (layerError as any).toString()
+                  : layerError),
+            );
           } catch (e) {
             void e;
           }

@@ -19,4 +19,5 @@ skills-lock.json
 
 # 一時解析用 (policy §29)
 .tmp/
+.tmp-verify/
 coverage/
