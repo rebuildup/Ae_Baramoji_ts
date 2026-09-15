@@ -60,12 +60,13 @@ canonical source を優先する (policy §4)。
 bun install --frozen-lockfile
 bun run type-check
 bun run lint
+bun run test
 bun run build
 bun run verify
 ```
 
 CI は `.github/workflows/ci.yml` が同じ entry point を順に実行する。
-完了条件は「5 コマンドすべて green」。
+完了条件は「6 コマンドすべて green」。
 
 ## 5. Recovery entry point
 

@@ -42,8 +42,9 @@ submodule は配布リポ `rebuildup/Ae_Baramoji` を参照する。
 | `bun run verify:zip` | `dist/checksums.txt` に対して release artifact を SHA-256 検証 | - |
 | `bun run release:zip` | 7 .jsx → `Baramoji.zip` | ✓ (release workflow) |
 | `bun run release:checksums` | `dist/checksums.txt` を生成 (sha256sum 互換) | ✓ (release workflow) |
+| `bun run release:prep` | submodule を `origin/main` に reset | ✓ (release workflow) |
 | `bun run release:sync` | 配布 submodule へ sync | ✓ (release workflow) |
-| `bun run release` | clean → build → verify → sync | - |
+| `bun run release` | clean → build → verify → prep → zip → checksums → verify:zip → sync | - |
 
 `release` workflow は CI 専用。ローカルの動作確認には `release:zip` / `release:sync` を
 個別に使う。`release:sync` には `--dry-run` フラグあり。

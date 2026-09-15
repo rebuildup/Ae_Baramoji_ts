@@ -37,10 +37,15 @@ semver:
 
 1. checkout (submodules: recursive, token: GH_PAT)
 2. `bun install --frozen-lockfile`
-3. `bun run clean && bun run build && bun run verify`
-4. `bun run release:sync` (配布 submodule へ push)
-5. 親リポ側で submodule pointer bump を commit
-6. GitHub Release 作成 + `Baramoji.zip` 添付
+3. submodule を `origin/main` に reset (`git -C release/Ae_Baramoji fetch && checkout -B main FETCH_HEAD`) — `Baramoji.zip` が tracked なので、ZIP ビルド前に行う
+4. `bun run clean && bun run build && bun run verify`
+5. `bun run release:zip` (ローカル ZIP ビルド)
+6. `bun run release:checksums` (公開 manifest 生成)
+7. `bun run verify:zip dist/checksums.txt release/Ae_Baramoji` (公開 manifest でローカル ZIP を検証)
+8. `bun run release:sync` (配布 submodule へ push)
+9. 親リポ側で submodule pointer bump を commit (tmp/release-sync branch)
+10. pointer PR の `release-source` 必須 check 通過を待ってから merge
+11. GitHub Release 作成 + `Baramoji.zip` 添付
 
 GH_PAT は両リポへの write を持つ PAT。`secrets.GH_PAT`。
 
