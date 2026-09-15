@@ -14,7 +14,11 @@
 import { ADBE, ALERT, CMD_CREATE_TEXT_SHAPE, UNDO, type DuplicateMode } from './constants';
 import { captureBasicProperties, applyBasicProperties, type LayerProperties } from './properties';
 import { adjustAnchorPoint } from './anchor';
-import { hasDecompositionArtifacts, removeDecompositionArtifacts } from './duplicate';
+import {
+  hasDecompositionArtifacts,
+  removeDecompositionArtifacts,
+  tagArtifact,
+} from './duplicate';
 
 export interface DecomposePartsOptions {
   onProgress?: (progress: number, message: string) => void;
@@ -58,7 +62,10 @@ export function runDecomposeTextToShapeParts(opts: DecomposePartsOptions = {}): 
     }
 
     try {
-      const textLayerIndices: number[] = [];
+      // Hold onto the actual Layer references (not indices). removeDecompositionArtifacts
+      // can shift sibling layer numbering, so re-resolving by index later may return a
+      // different layer or `undefined`. Keeping references avoids that footgun.
+      const sourceLayers: Layer[] = [];
       const layerProperties: LayerProperties[] = [];
 
       for (let i = 0; i < selectedLayers.length; i++) {
@@ -75,24 +82,25 @@ export function runDecomposeTextToShapeParts(opts: DecomposePartsOptions = {}): 
         }
 
         if (isTextLayer || (isShapeLayer && hasVectorGroup)) {
-          textLayerIndices.push(layer.index);
+          sourceLayers.push(layer);
           layerProperties.push(captureBasicProperties(layer));
         }
 
         layer.selected = false;
       }
 
-      textLayerIndices.sort((a, b) => a - b);
+      // Process in stacking order (top to bottom) — same as the previous index sort.
+      sourceLayers.sort((a, b) => a.index - b.index);
 
-      if (textLayerIndices.length === 0) {
+      if (sourceLayers.length === 0) {
         alert(ALERT.NoValidForParts);
         app.endUndoGroup();
         return;
       }
 
-      const totalSteps = Math.max(1, textLayerIndices.length);
-      for (let i = 0; i < textLayerIndices.length; i++) {
-        const layerIndex = textLayerIndices[i];
+      const totalSteps = Math.max(1, sourceLayers.length);
+      for (let i = 0; i < sourceLayers.length; i++) {
+        const currentLayer = sourceLayers[i];
         const originalProps = layerProperties[i];
 
         onProgress?.(
@@ -100,7 +108,6 @@ export function runDecomposeTextToShapeParts(opts: DecomposePartsOptions = {}): 
           'Processing layer ' + (i + 1) + '/' + totalSteps + '...',
         );
 
-        const currentLayer = comp.layers[layerIndex] as Layer;
         currentLayer.selected = true;
 
         if (duplicateMode === 'skip' && hasDecompositionArtifacts(comp, currentLayer, 'parts')) {
@@ -158,6 +165,12 @@ export function runDecomposeTextToShapeParts(opts: DecomposePartsOptions = {}): 
         );
 
         if (resultLayers && resultLayers.length > 0) {
+          // Tag each new artifact so a later overwrite pass can match it back
+          // to THIS source layer (and not to user-created siblings that share
+          // a name, e.g. "X Outline ").
+          for (let r = 0; r < resultLayers.length; r++) {
+            tagArtifact(resultLayers[r], currentLayer, 'parts');
+          }
           try {
             for (let s = 0; s < comp.selectedLayers.length; s++) {
               comp.selectedLayers[s].selected = false;

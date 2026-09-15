@@ -11,9 +11,23 @@ jobs:
   release:
     name: build, sync submodule, create GitHub Release
     runs-on: ubuntu-latest
+    # Cap the job at 30 minutes: the entire release flow is a handful of
+    # network calls, and a misbehaving fetch / PR open must not consume
+    # billable runner minutes indefinitely.
+    timeout-minutes: 30
+    env:
+      # Bot identity used by `bun run release:sync` for the submodule commit.
+      GIT_AUTHOR_NAME: ae-baramoji-bot
+      GIT_AUTHOR_EMAIL: bot@rebuildup.local
+      GIT_COMMITTER_NAME: ae-baramoji-bot
+      GIT_COMMITTER_EMAIL: bot@rebuildup.local
+      # The sync script uses this to name the per-tag feature branch
+      # (tmp/release-sync/<tag>) that bumps the parent submodule pointer.
+      RELEASE_TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
     steps:
       - name: Checkout (with submodules)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
           # GH_PAT must have write access to BOTH the parent repo and the
@@ -22,7 +36,7 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.2
 
@@ -35,21 +49,20 @@ jobs:
       - name: Verify build outputs
         run: bun run verify
 
-      - name: Compute SHA-256 checksums
+      # Build the published ZIP, then compute and verify its SHA-256 BEFORE
+      # any remote push. A failed verify must not leave the distribution
+      # repo / submodule branch updated.
+      - name: Build ZIP, compute and verify checksums
         run: |
           bun run release:zip
           bun run release:checksums
-          bun run verify:zip dist/checksums.txt
+          # checksums.txt records Baramoji.zip by basename; point verify at
+          # the directory that holds the published zip in the submodule.
+          bun run verify:zip dist/checksums.txt release/Ae_Baramoji
 
+      # Sync to the submodule AFTER verification. The sync step is the only
+      # place we push to the distribution repo + bump the parent pointer.
       - name: Sync to submodule
-        env:
-          GIT_AUTHOR_NAME: ae-baramoji-bot
-          GIT_AUTHOR_EMAIL: bot@rebuildup.local
-          GIT_COMMITTER_NAME: ae-baramoji-bot
-          GIT_COMMITTER_EMAIL: bot@rebuildup.local
-          # The sync script uses this to name the per-tag feature branch
-          # (tmp/release-sync/<tag>) that bumps the parent submodule pointer.
-          RELEASE_TAG: ${{ github.ref_name }}
         run: bun run release:sync
 
       # Embed the checksums in the GitHub Release body so users can verify
@@ -64,7 +77,7 @@ jobs:
             cat dist/checksums.txt
             echo '```'
             echo ""
-            echo "Verify locally with \`sha256sum -c dist/checksums.txt\` from the project root,"
+            echo "Verify locally with \`sha256sum -c checksums.txt\` next to Baramoji.zip,"
             echo "or download \`checksums.txt\` next to \`Baramoji.zip\` and compare the \`Baramoji.zip\` line."
           } > release-notes-body.md
           ls -l release-notes-body.md
@@ -73,9 +86,6 @@ jobs:
       # bump to a per-tag feature branch. Open a PR from that branch and
       # merge it with the GH_PAT (which has admin perms for this repo).
       - name: Open and merge parent pointer PR
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           BRANCH="tmp/release-sync/${RELEASE_TAG}"
@@ -93,12 +103,12 @@ jobs:
               --base main \
               --head "$BRANCH" \
               --title "chore(release): bump submodule pointer for ${RELEASE_TAG}" \
-              --body "Automated submodule pointer bump for ${RELEASE_TAG}."
+              --body "Automated submodule pointer for ${RELEASE_TAG}."
           fi
           gh pr merge "$BRANCH" --squash --delete-branch --body "Automated release sync for ${RELEASE_TAG}"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             release/Ae_Baramoji/Baramoji.zip

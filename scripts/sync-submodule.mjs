@@ -180,12 +180,19 @@ async function main() {
   }
   if (!existsSync(SUBMODULE_DIR)) mkdirSync(SUBMODULE_DIR, { recursive: true });
 
+  // Baramoji.zip must already exist at SUBMODULE_DIR/Baramoji.zip — produced
+  // by `bun run release:zip` before `bun run release:sync`. We do NOT re-run
+  // release-zip here: it would invalidate the SHA-256 we just computed for
+  // the public checksums.txt if archiver produced a different byte stream.
+  const zipPath = join(SUBMODULE_DIR, 'Baramoji.zip');
+  if (!existsSync(zipPath)) {
+    throw new Error(`${zipPath} is missing; run \`bun run release:zip\` first`);
+  }
+
   const sha = parentSha();
   resetSubmoduleToRemoteMain();
   copyBuiltFiles();
   ensureReadmeNotice();
-  // Re-run release-zip inside the submodule so Baramooji.zip lives next to its files
-  run('node', [join(ROOT, 'scripts', 'release-zip.mjs'), join(SUBMODULE_DIR, 'Baramoji.zip')]);
   commitAndPushSubmodule(sha);
 
   // After pushing the submodule, get its new HEAD sha and update the parent pointer.

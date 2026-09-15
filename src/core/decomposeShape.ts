@@ -18,7 +18,11 @@
 
 import { adjustAnchorPoint } from './anchor';
 import { ADBE, ALERT, CMD_CREATE_TEXT_SHAPE, UNDO, type DuplicateMode } from './constants';
-import { hasDecompositionArtifacts, removeDecompositionArtifacts } from './duplicate';
+import {
+  hasDecompositionArtifacts,
+  removeDecompositionArtifacts,
+  tagArtifact,
+} from './duplicate';
 
 export interface DecomposeShapeOptions {
   /** Called after each layer is processed. progress in 0-100. */
@@ -66,6 +70,10 @@ export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}):
     }
 
     for (let layerIdx = 0; layerIdx < selLayers.length; layerIdx++) {
+      // Wrap each source layer in its own try/catch so a failure on one
+      // source (e.g. removeDecompositionArtifacts hitting a locked layer)
+      // doesn't abort the entire multi-source pass.
+      try {
       const layerSpan = 60;
       const layerBase = 8 + Math.round((layerIdx / Math.max(1, selLayers.length)) * 10);
       onProgress?.(
@@ -128,6 +136,9 @@ export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}):
 
         const charName = cleanText[i] ? cleanText[i] : String(i + 1);
         dup.name = 'char_' + charName;
+        // Tag the artifact so a later overwrite pass can match it back to
+        // THIS source layer (and not a user-created sibling called "char_A").
+        tagArtifact(dup, textLayer, 'shape');
 
         dup.inPoint = layerInPoint;
         dup.outPoint = layerOutPoint;
@@ -179,6 +190,21 @@ export function runDecomposeTextToShapeLayers(opts: DecomposeShapeOptions = {}):
         Math.min(90 + Math.round(((layerIdx + 1) / selLayers.length) * 8), 98),
         'Layer ' + (layerIdx + 1) + '/' + selLayers.length + ' completed',
       );
+      } catch (layerError) {
+        // Wrap each source in its own try/catch so one bad layer doesn't
+        // abort the whole multi-source pass. The outer catch still handles
+        // unexpected failures that originate outside the per-source loop.
+        try {
+          alert(
+            'Error processing layer: ' +
+              ((layerError as any)?.toString
+                ? (layerError as any).toString()
+                : layerError),
+          );
+        } catch (e) {
+          void e;
+        }
+      }
     }
 
     onProgress?.(99, 'Finalizing...');

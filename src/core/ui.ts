@@ -50,7 +50,21 @@ export function buildPalette(cb: PaletteCallbacks, opts: PaletteOptions = {}): S
   dropdown.selection = initialIdx >= 0 ? initialIdx : 0;
 
   function currentMode(): DuplicateMode {
-    return MODE_ORDER[dropdown.selection] || 'skip';
+    // ExtendScript's DropDownList.selection is typed as `ListItem | number`
+    // and, per the Adobe ScriptUI docs, "When set with an index value, the
+    // property still returns an object reference" — so on read it is a
+    // ListItem (or null when nothing is selected). Read `.index` from the
+    // ListItem, or accept a raw number for defensive coding. Fall back to
+    // 'skip' if either is missing so the button click never crashes.
+    type Indexed = { index?: number } | number | null;
+    const sel = dropdown.selection as Indexed;
+    let idx = -1;
+    if (typeof sel === 'number') {
+      idx = sel;
+    } else if (sel && typeof sel.index === 'number') {
+      idx = sel.index;
+    }
+    return MODE_ORDER[idx] || 'skip';
   }
 
   const colGroup = win.add('group') as any;

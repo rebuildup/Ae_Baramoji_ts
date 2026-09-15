@@ -16,7 +16,11 @@ import {
   setPosition,
 } from './properties';
 import { degToRad, rotationToMatrix, multiplyMatrix3x3, applyMatrixToOffset } from './matrix';
-import { hasDecompositionArtifacts, removeDecompositionArtifacts } from './duplicate';
+import {
+  hasDecompositionArtifacts,
+  removeDecompositionArtifacts,
+  tagArtifact,
+} from './duplicate';
 
 export interface DecomposeTextOptions {
   onProgress?: (progress: number, message: string) => void;
@@ -81,6 +85,10 @@ export function runDecomposeTextToTextLayers(opts: DecomposeTextOptions = {}): v
     onProgress?.(4, 'Inspecting layers...');
 
     for (let layerIdx = 0; layerIdx < selLayers.length; layerIdx++) {
+      // Wrap each source layer in its own try/catch so a failure on one
+      // source (e.g. removeDecompositionArtifacts hitting a locked layer)
+      // doesn't abort the entire multi-source pass.
+      try {
       const layerBase = 8 + Math.round((layerIdx / Math.max(1, selLayers.length)) * 10);
       onProgress?.(
         Math.min(layerBase, 18),
@@ -259,6 +267,9 @@ export function runDecomposeTextToTextLayers(opts: DecomposeTextOptions = {}): v
         } catch (e) {
           void e;
         }
+        // Tag the artifact so a later overwrite pass can match it back to
+        // THIS source layer (and not a user-created sibling called "A").
+        tagArtifact(characterLayer, textLayer, 'text');
         resultLayers.unshift(characterLayer);
       }
 
@@ -515,6 +526,15 @@ export function runDecomposeTextToTextLayers(opts: DecomposeTextOptions = {}): v
         } catch (e) {
           void e;
         }
+      }
+      } catch (layerError) {
+        // Surface the error to the user but continue with the remaining
+        // selected sources. The outer try/catch will still abort on truly
+        // catastrophic failures (e.g. undo group setup).
+        alert(
+          'Error processing layer: ' +
+            ((layerError as any)?.toString ? (layerError as any).toString() : layerError),
+        );
       }
     }
 

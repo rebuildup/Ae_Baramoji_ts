@@ -157,6 +157,17 @@ declare global {
     onClick?: (...args: any[]) => void;
     size?: number[];
   }
+
+  // ExtendScript's ES3 engine exposes a global JSON host extension. Declare
+  // the namespace so the type-checker accepts `JSON.stringify` in scripts.
+  namespace JSON {
+    function stringify(
+      value: any,
+      replacer?: (key: string, value: any) => any,
+      space?: string | number,
+    ): string;
+    function parse(text: string, reviver?: (key: any, value: any) => any): any;
+  }
 }
 
 declare var app: Application;

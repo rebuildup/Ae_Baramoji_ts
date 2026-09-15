@@ -19,7 +19,7 @@
     "release:checksums": "node scripts/checksums.mjs",
     "release:zip": "node scripts/release-zip.mjs",
     "release:sync": "node scripts/sync-submodule.mjs",
-    "release": "bun run clean && bun run build && bun run verify && bun run release:checksums && bun run release:sync"
+    "release": "bun run clean && bun run build && bun run verify && bun run release:zip && bun run release:sync && bun run release:checksums"
   },
   "dependencies": {
     "types-for-adobe": "^7.0.12"

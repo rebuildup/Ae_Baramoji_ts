@@ -3,20 +3,20 @@
 // Usage:
 //   node scripts/verify-zip.mjs <checksums.txt> [base-dir]
 //
-// The base-dir defaults to the current working directory. Every file
-// referenced in the checksum file is read relative to base-dir.
+// The base-dir defaults to the directory that contains checksums.txt itself.
+// If a referenced file is not found under that base-dir, the same basename is
+// also looked up under any sibling directories next to checksums.txt, so
+// users who downloaded `Baramoji.zip` + `checksums.txt` into the same folder
+// can verify without specifying a base-dir.
 //
-// For users who downloaded `Baramoji.zip` and `checksums.txt` from a GitHub
-// release into the same folder, paths in checksums.txt should match
-// directly — but `checksums.mjs` currently writes project-root-relative
-// paths (for in-repo CI verification). Re-run from the project root, or
-// pass the appropriate base-dir.
-//
-// Exit code 0 on success, 1 on mismatch, 2 on missing files.
+// Exit codes:
+//   0 — all entries matched
+//   1 — verification failure: mismatch, missing file, malformed line, or empty manifest
+//   2 — usage error or manifest itself missing/unreadable
 
 import { createHash } from 'node:crypto';
-import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 
 const args = process.argv.slice(2);
 if (args.length < 1) {
@@ -25,7 +25,7 @@ if (args.length < 1) {
 }
 
 const checksumsPath = resolve(args[0]);
-const baseDir = resolve(args[1] || '.');
+const explicitBaseDir = args[1];
 
 if (!existsSync(checksumsPath)) {
   console.error(`verify-zip: ${checksumsPath} not found`);
@@ -35,21 +35,93 @@ if (!existsSync(checksumsPath)) {
 const text = readFileSync(checksumsPath, 'utf8');
 const lines = text.split('\n').filter((l) => l.length > 0);
 
+// sha256sum-compatible regex. Two output formats are recognised:
+//   text    : "<64 hex><space><space><filename>"
+//   binary  : "<64 hex><space>*<filename>"   (from `sha256sum -b`)
+// The optional `*` is a binary-mode marker; we MUST consume it explicitly
+// (otherwise the `*` ends up captured as part of the filename and the
+// file goes missing).
+const LINE_RE = /^([0-9a-fA-F]{64})(?: {2}| \*)(\S.*|)$/;
+
+if (lines.length === 0) {
+  console.error('verify-zip: manifest is empty; nothing to verify (exit 1)');
+  process.exit(1);
+}
+
+const checksumsDir = dirname(checksumsPath);
+const cwd = process.cwd();
+const defaultBaseDir = explicitBaseDir
+  ? resolve(explicitBaseDir)
+  : checksumsDir;
+
+// Additional base-dir candidates for in-repo usage: when the manifest lives
+// in `dist/` and records repo-root-relative paths, the user-friendly default
+// is the current working directory (the project root).
+const altBaseDirs = explicitBaseDir
+  ? []
+  : [cwd, resolve(checksumsDir, '..')].filter((d) => d !== defaultBaseDir);
+
+// Cache the sibling-directory scan — it's invariant for the lifetime of this
+// invocation, and the internal manifest has multiple entries.
+const siblingDirs = (() => {
+  if (explicitBaseDir) return [];
+  return readdirSync(checksumsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => join(checksumsDir, d.name))
+    .sort();
+})();
+
+function resolvePath(relPath) {
+  if (isAbsolute(relPath)) return relPath;
+  if (relPath === '') return null;
+  const direct = join(defaultBaseDir, relPath);
+  if (existsSync(direct)) return direct;
+  // Try additional base-dirs (project root / parent) for in-repo manifests
+  // whose default base-dir is a subdirectory like `dist/`.
+  for (const alt of altBaseDirs) {
+    const candidate = join(alt, relPath);
+    if (existsSync(candidate)) return candidate;
+  }
+  // Honour explicit override; never silently fall through to a sibling scan.
+  if (explicitBaseDir) return direct;
+  // Scan sibling directories in sorted order for a deterministic result.
+  const base = basename(relPath);
+  const matches = [];
+  for (const dir of siblingDirs) {
+    const candidate = join(dir, base);
+    if (existsSync(candidate)) matches.push(candidate);
+  }
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    console.error(
+      `verify-zip: ambiguous match for ${relPath}; candidates:\n  ${matches.join('\n  ')}`,
+    );
+  }
+  return direct;
+}
+
 let failures = 0;
 let checked = 0;
+let malformed = 0;
 
 for (const line of lines) {
-  // Format: "<sha256> " (two spaces, sha256sum convention).
-  const m = line.match(/^([0-9a-fA-F]{64})\s+(.+)$/);
+  const m = line.match(LINE_RE);
   if (!m) {
     console.error(`verify-zip: malformed line: ${line}`);
     failures += 1;
+    malformed += 1;
     continue;
   }
   const expected = m[1].toLowerCase();
   const relPath = m[2].trim();
-  const absPath = join(baseDir, relPath);
-  if (!existsSync(absPath)) {
+  if (relPath === '') {
+    console.error(`verify-zip: empty filename in line: ${line}`);
+    failures += 1;
+    malformed += 1;
+    continue;
+  }
+  const absPath = resolvePath(relPath);
+  if (!absPath || !existsSync(absPath)) {
     console.error(`verify-zip: MISSING  ${relPath}`);
     failures += 1;
     continue;
@@ -67,7 +139,9 @@ for (const line of lines) {
 }
 
 if (failures > 0) {
-  console.error(`verify-zip: ${failures} failure(s) out of ${checked} checked`);
+  const malformedNote = malformed > 0 ? ` (${malformed} malformed)` : '';
+  const checkedNote = checked > 0 ? ` out of ${checked} checked` : '';
+  console.error(`verify-zip: ${failures} failure(s)${checkedNote}${malformedNote}`);
   process.exit(1);
 }
 console.log(`verify-zip: all ${checked} file(s) match`);

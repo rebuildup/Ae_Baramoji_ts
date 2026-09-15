@@ -142,9 +142,21 @@ CI は dry-run しない。CI で tag を消したい場合は `git tag -d vX.Y.
 
 release 配布物の SHA-256 検証:
 
+dist/checksums.txt は公開 asset のみを記録する（`Baramoji.zip` を basename で）。
+ダウンロードした `Baramoji.zip` と `checksums.txt` を同じ directory に置いた場合:
+
 ```bash
-# リポ root で
-bun run verify:zip dist/checksums.txt
+# download dir で
+sha256sum -c checksums.txt
+# または (CI / in-repo 用)
+node scripts/verify-zip.mjs checksums.txt
+```
+
+dist/checksums-internal.txt は内部 build artifact 全てを記録する
+(`bun run release:checksums -- --internal` で生成)。リポ root からのみ:
+
+```bash
+bun run verify:zip dist/checksums-internal.txt
 # または
-sha256sum -c dist/checksums.txt
+sha256sum -c dist/checksums-internal.txt
 ```
