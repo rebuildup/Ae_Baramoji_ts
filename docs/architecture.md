@@ -29,6 +29,23 @@ After Effects 上で動作する ExtendScript (`.jsx`) を TypeScript から生�
 
 会話履歴・private memory・Supervisor hidden DB・session ID は SoT にしない。
 
+### 2.1 SoT 関係 (Mermaid)
+
+```mermaid
+flowchart LR
+    GH[GitHub Issues<br/>durable work + dependency] --> PR[Pull Requests<br/>review / integration]
+    PR --> RB[release-x-y-z branch<br/>active sprint]
+    RB -->|release PR<br/>user-authorized merge| MAIN[main<br/>released state]
+    MAIN -->|checkout + build| ART[dist/*.jsx + Baramoji.zip]
+    ART -. submodule sync .-> DIST[release/Ae_Baramoji<br/>distribution mirror]
+    DOCS[docs/ + AGENTS.md<br/>canonical project knowledge]
+    ADR[docs/decisions/<br/>ADR — long-lived decisions]
+    GH --- DOCS
+    GH --- ADR
+    DISC[(会話履歴 / private memory /<br/>session ID / hidden DB)]
+    DISC -. not SoT .-> GH
+```
+
 ## 3. Repository 構造
 
 ```
@@ -98,6 +115,22 @@ rebuildup/Ae_Baramoji (配布リポ)
 4. 内部に `=>` / ` const ` / ` let ` / バッククォート / スプレッド構文を含まない (ES3 互換)
 
 ES3 互換は ExtendScript の制約に由来する。詳細は `docs/decisions/0001-`。
+
+### 4.1 Build pipeline (Mermaid)
+
+```mermaid
+flowchart TD
+    SRC[src/entries/*.ts<br/>+ src/core/*.ts] -->|rollup -c<br/>IIFE / ES3| DIST[dist/*.jsx]
+    DIST -->|verify-build.mjs<br/>ES3 / IIFE / header| CHECK{構文 + ES3<br/>check pass?}
+    CHECK -- no --> FAIL[build fail<br/>troubleshoot]
+    CHECK -- yes --> ZIP[release:zip<br/>Baramoji.zip]
+    DIST -->|checksums.mjs| SUM[dist/checksums.txt]
+    ZIP --> SUM
+    SUM -->|verify:zip| READY[release artifact ready]
+    ZIP -->|release:sync<br/>submodule push| SUB[release/Ae_Baramoji/<br/>Baramoji.zip + 7 .jsx]
+    SUB -->|submodule pointer bump<br/>+ parent pointer PR| MAIN[main]
+    READY -->|tag v* push| GHREL[GitHub Release]
+```
 
 ## 5. Dependency direction
 
