@@ -9,11 +9,20 @@
 # Status check name emitted: `release-source` (matches the ADR-0013
 # ruleset required context).
 # Required check semantics: see `Protect main` ruleset + ADR-0013.
+#
+# Trigger: `pull_request_target` (NOT `pull_request`). The `pull_request`
+# event runs the workflow from the PR's HEAD commit, which means a fork
+# PR can modify this file to remove the head-pattern check and turn the
+# status green. `pull_request_target` runs the workflow from the BASE
+# branch, so the fork cannot rewrite the gate. We never check out PR
+# code, so the elevated secret/token context that `pull_request_target`
+# provides is unused — the job only reads `github.event.pull_request.*`
+# metadata.
 
 name: release-source
 
 on:
-  pull_request:
+  pull_request_target:
     # `edited` is required so the check re-evaluates when the PR is retargeted
     # to/from `main` (e.g. a stacked release-branch PR later flips its base
     # to main). Without it, the gate would stay stale against a base change.

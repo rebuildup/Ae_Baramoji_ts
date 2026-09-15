@@ -34,9 +34,17 @@ release-source check を独立 workflow で提供し、ruleset に required chec
 
 ### 1. release-source check workflow を追加する
 
-`.github/workflows/release-source-check.yml` を新設し、`pull_request`
+`.github/workflows/release-source-check.yml` を新設し、`pull_request_target`
 opened / edited / reopened / synchronize で起動する:
 
+- trigger を **`pull_request_target`** にする理由: `pull_request` だと workflow
+  file 自体が PR の HEAD commit から取られるため、fork PR の作者が
+  workflow を書き換えて head pattern check を bypass できてしまう
+  (CodeRabbit Security Review, 2026-09-15)。
+  `pull_request_target` は workflow を **BASE branch から** 実行するため
+  fork からの改変が効かない。本 workflow は PR のコードを checkout せず
+  `github.event.pull_request.*` の metadata だけを参照するので、
+  `pull_request_target` 由来の secret 露出面を一切使わずに済む。
 - `base == main` のとき: head ref が
   `^release-[0-9]+-[0-9]+-[0-9]+(-[A-Za-z0-9._-]+)?$` に match するか検証。
   mismatch の場合 ::error:: を emit して exit 1。
@@ -135,6 +143,8 @@ gh api /repos/rebuildup/Ae_Baramoji_ts/rulesets/22558519 \
 - CI red 状態での `main` merge が構造的に不可能になる
 - `release-x-y-z -> main` 以外の直接経路 (例: feature branch から
   `main`、古い label/release-* branch から `main`) が明示 error で弾かれる
+- `pull_request_target` により、fork PR が workflow file を改変して
+  check を bypass する経路を塞げる (CodeRabbit Security Review)
 
 ### negative
 
