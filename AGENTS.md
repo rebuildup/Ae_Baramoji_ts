@@ -79,3 +79,10 @@ fresh agent / 別 sandbox からの再開は `docs/recovery.md` を最優先で�
 project-local Skill は `.agents/skills/` 配下。`bunx skills list` で発見できる。
 新規 Skill 追加は `docs/decisions/` 配下の ADR と合わせて行う。
 global 設定は project truth にしない。
+
+
+## Constitution / operating profile
+
+- 最上位 contract: [`constitution/CONSTITUTION.md`](constitution/CONSTITUTION.md)
+- current Operating Model: [`organization/profiles/release-driven-solo.md`](organization/profiles/release-driven-solo.md)
+- 既存の project-specific ADR / architecture / release contract は、Constitution と両立する限り generic upstream Practice より具体的な authority として維持する。
